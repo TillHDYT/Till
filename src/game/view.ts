@@ -5,6 +5,7 @@ import { FOUNTAIN, type V2 } from "./mapdata";
 import {
   TEAM_COLOR,
   TEAM_GLOW,
+  buildBrazier,
   buildChampion,
   buildFountain,
   buildInhibitor,
@@ -32,7 +33,13 @@ function angleLerp(a: number, b: number, t: number) {
 
 type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; beam: THREE.Mesh | null; shield: THREE.Mesh };
 type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number };
-type StructView = { model: StructModel; unit: Structure };
+type StructView = {
+  model: StructModel;
+  unit: Structure;
+  lastAtk: number;
+  beam: THREE.Mesh | null;
+  halo: THREE.Mesh | null;
+};
 
 export class View {
   readonly scene: THREE.Scene;
@@ -65,6 +72,11 @@ export class View {
   private hookChains = new Map<number, THREE.Mesh>();
   private fogT = 0;
   private playerTeam: 0 | 1;
+  private braziers: { x: number; z: number; y: number; glow: THREE.Sprite; flame: THREE.Object3D; phase: number }[] = [];
+  private beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+  private tmpA = new THREE.Vector3();
+  private tmpB = new THREE.Vector3();
+  private fireCol = [new THREE.Color(0xffb040), new THREE.Color(0xff6a10), new THREE.Color(0xffe080)];
 
   constructor(scene: THREE.Scene, world: World, quality: Quality) {
     this.scene = scene;
@@ -91,6 +103,7 @@ export class View {
       const team = s.team as 0 | 1;
       const model = s.kind === "turret" ? buildTurret(team) : s.kind === "inhib" ? buildInhibitor(team) : buildNexus(team);
       model.root.position.set(s.x, world.grid.groundAt(s.x, s.z), s.z);
+      model.root.rotation.y = s.facing;
       model.root.traverse((o) => {
         if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshLambertMaterial) {
           o.castShadow = true;
@@ -98,7 +111,20 @@ export class View {
         }
       });
       scene.add(model.root);
-      this.structs.set(s.id, { model, unit: s });
+      this.structs.set(s.id, { model, unit: s, lastAtk: 0, beam: null, halo: null });
+      // Feuerschalen links und rechts der Inhibitoren
+      if (s.kind === "inhib") {
+        const c = Math.cos(s.facing);
+        const sn = Math.sin(s.facing);
+        for (const side of [-1, 1]) {
+          const bx = s.x + c * 4.4 * side - sn * 1.2;
+          const bz = s.z - sn * 4.4 * side - c * 1.2;
+          const b = buildBrazier();
+          b.root.position.set(bx, world.grid.groundAt(bx, bz), bz);
+          scene.add(b.root);
+          this.braziers.push({ x: bx, z: bz, y: b.root.position.y + b.fireY, glow: b.glow, flame: b.flame, phase: Math.random() * 6 });
+        }
+      }
     }
 
     for (const c of world.champs) {
@@ -354,25 +380,118 @@ export class View {
 
   private syncStructures(dt: number) {
     const w = this.world;
+    const g = w.grid;
+    const p = w.player;
     for (const v of this.structs.values()) {
       const s = v.unit;
       const m = v.model;
       const alive = s.alive;
-      m.crystal.visible = alive;
-      m.glow.visible = alive;
+      const team = s.team === 1 ? 1 : 0;
+      m.top.visible = alive;
       m.rubble.visible = !alive;
-      if (s.kind === "turret") m.top.visible = alive;
-      if (s.kind === "nexus") m.top.visible = alive;
-      if (alive) {
-        m.crystal.rotation.y += dt * (s.kind === "nexus" ? 0.5 : 1.2);
-        const bob = Math.sin(this.time * 1.6 + s.id) * 0.15;
-        m.crystal.position.y = (s.kind === "turret" ? 7.3 : s.kind === "inhib" ? 2.8 : 5.2) + bob;
-        const pulse = s.kind === "turret" && s.target ? 1 + Math.sin(this.time * 10) * 0.12 : 1;
-        const base = s.kind === "turret" ? 4 : s.kind === "inhib" ? 5 : 11;
-        m.glow.scale.setScalar(base * pulse * (s.invulnerable ? 0.85 : 1));
+      if (!alive) {
+        if (v.beam) v.beam.visible = false;
+        if (v.halo) v.halo.visible = false;
+        if (m.outline) m.outline.visible = false;
+        continue;
       }
-      void w;
+      const atk = s.anim.atk;
+      const bob = Math.sin(this.time * 1.6 + s.id) * (s.kind === "turret" ? 0.1 : 0.2);
+      m.crystal.position.y = m.crystalY + bob;
+      m.crystal.rotation.y += dt * (s.kind === "nexus" ? 0.5 : s.kind === "inhib" ? 0.6 : 1.4);
+      if (m.shards) m.shards.rotation.y -= dt * 0.9;
+
+      if (s.kind === "turret") {
+        // Aufleuchten beim Schuss, Rückstoß des Stabs
+        const flash = atk;
+        m.crystal.scale.set(0.85 * (1 + flash * 0.45), 1.75 * (1 + flash * 0.3), 0.85 * (1 + flash * 0.45));
+        m.glow.scale.setScalar(3.6 * (1 + flash * 1.3) * (s.target ? 1 + Math.sin(this.time * 9) * 0.08 : 1));
+        (m.glow.material as THREE.SpriteMaterial).opacity = s.invulnerable ? 0.55 : 0.85;
+        if (m.staff) m.staff.rotation.x = -0.14 * Math.sin(flash * Math.PI);
+        m.crystal.getWorldPosition(this.tmpA);
+        if (atk > v.lastAtk + 0.3) {
+          this.particles.burst(this.tmpA.x, this.tmpA.y, this.tmpA.z, TEAM_GLOW[team], 14, 4, 0.7, 0.35, 0);
+        }
+        // kleine Funken am Kristall
+        if (Math.random() < 0.06 && this.seenAt(s.x, s.z)) {
+          this.particles.emit(this.tmpA.x + (Math.random() - 0.5) * 0.8, this.tmpA.y - 0.3, this.tmpA.z + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.4, 1.2, (Math.random() - 0.5) * 0.4, new THREE.Color(team === 0 ? 0xa0e8ff : 0xffb070), 0.35, 1.2, 0);
+        }
+        // Zielstrahl vom Kristall zum Ziel
+        const tg = s.target;
+        const showBeam = !!tg && tg.alive && (tg.team === this.playerTeam || tg.vis[this.playerTeam]);
+        if (showBeam) {
+          if (!v.beam) {
+            const mk = (opacity: number) => {
+              const b = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team], transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+              b.renderOrder = 5;
+              this.scene.add(b);
+              return b;
+            };
+            v.beam = mk(0.6);
+            v.halo = mk(0.2);
+          }
+          this.tmpB.set(tg.x, g.groundAt(tg.x, tg.z) + Math.min(1.4, tg.height * 0.55), tg.z);
+          const champ = tg instanceof Champion;
+          const core = (champ ? 0.07 : 0.045) * (1 + atk * 1.5);
+          this.placeBeam(v.beam, this.tmpA, this.tmpB, core);
+          this.placeBeam(v.halo!, this.tmpA, this.tmpB, core * 4);
+          const pulse = 0.75 + Math.sin(this.time * 12) * 0.25;
+          (v.beam.material as THREE.MeshBasicMaterial).opacity = (champ ? 0.75 : 0.5) * pulse + atk * 0.25;
+          (v.halo!.material as THREE.MeshBasicMaterial).opacity = (champ ? 0.22 : 0.12) + atk * 0.2;
+          v.beam.visible = true;
+          v.halo!.visible = true;
+        } else if (v.beam) {
+          v.beam.visible = false;
+          v.halo!.visible = false;
+        }
+      } else {
+        const pulse = 1 + Math.sin(this.time * 2.2 + s.id) * 0.08;
+        const base = s.kind === "inhib" ? 7 : 11;
+        m.glow.scale.setScalar(base * pulse * (s.invulnerable ? 0.85 : 1));
+        if (s.kind === "inhib" && Math.random() < 0.12 && this.seenAt(s.x, s.z)) {
+          const a = Math.random() * Math.PI * 2;
+          const r = 0.6 + Math.random() * 1.2;
+          const y = g.groundAt(s.x, s.z) + 1.2;
+          this.particles.emit(s.x + Math.cos(a) * r, y, s.z + Math.sin(a) * r, 0, 1.6 + Math.random(), 0, new THREE.Color(TEAM_GLOW[team]), 0.4, 1.4, 0);
+        }
+      }
+      v.lastAtk = atk;
+
+      // Roter Umriss: wenn du das Gebäude angreifst oder der Turm dich anvisiert
+      if (m.outline) {
+        const enemy = s.team !== this.playerTeam;
+        const targeted = p.alive && ((p.order.type === "attack" && p.order.target === s) || s.target === p);
+        m.outline.visible = enemy && targeted;
+      }
     }
+
+    // Feuer in den Schalen
+    for (const b of this.braziers) {
+      const flicker = 1 + Math.sin(this.time * 13 + b.phase) * 0.08 + Math.sin(this.time * 7.3 + b.phase) * 0.06;
+      b.glow.scale.setScalar(4 * flicker);
+      b.flame.scale.set(1 + Math.sin(this.time * 9 + b.phase) * 0.08, flicker * (1 + Math.sin(this.time * 17 + b.phase) * 0.12), 1 + Math.cos(this.time * 11 + b.phase) * 0.08);
+      b.flame.rotation.y += dt * 2;
+      if (!this.seenAt(b.x, b.z)) continue;
+      if (Math.random() < 0.8) {
+        const c = this.fireCol[(Math.random() * 3) | 0];
+        this.particles.emit(b.x + (Math.random() - 0.5) * 0.8, b.y + 0.4, b.z + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.4, 2.2 + Math.random() * 1.6, (Math.random() - 0.5) * 0.4, c, 1.0, 0.6, 0.5);
+      }
+    }
+  }
+
+  /** Spielerteam sieht diese Stelle gerade (für Effekte). */
+  private seenAt(x: number, z: number) {
+    return this.fogVisibleAt(x, z);
+  }
+
+  private placeBeam(mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, radius: number) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dy, dz) || 0.001;
+    mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    mesh.scale.set(radius, len, radius);
+    mesh.quaternion.setFromUnitVectors(this.up, this.tmpP.set(dx / len, dy / len, dz / len));
   }
 
   private makeProj(p: Projectile): THREE.Object3D {
@@ -426,10 +545,13 @@ export class View {
       }
       case "turret": {
         const grp = new THREE.Group();
-        const m = new THREE.Mesh(G.sphere, basic(0xffffff));
-        m.scale.setScalar(0.32);
-        grp.add(m);
-        grp.add(glowSprite(TEAM_GLOW[team], 2.4, 1));
+        const outer = new THREE.Mesh(G.big, new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team], transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+        outer.scale.set(0.42, 0.42, 1.5);
+        grp.add(outer);
+        const core = new THREE.Mesh(G.big, basic(team === 0 ? 0xe8f8ff : 0xfff0d0));
+        core.scale.set(0.2, 0.2, 0.95);
+        grp.add(core);
+        grp.add(glowSprite(TEAM_GLOW[team], 3.2, 1));
         o = grp;
         break;
       }
@@ -463,6 +585,8 @@ export class View {
         o = grp;
       }
     }
+    o.userData.visual = p.visual;
+    o.userData.team = team;
     this.scene.add(o);
     return o;
   }
@@ -482,11 +606,21 @@ export class View {
       const visible = p.team === this.playerTeam || p.team === 2 || owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
       o.visible = visible;
       const y = g.groundAt(p.x, p.z) + p.y;
-      o.position.set(p.x, y, p.z);
-      o.rotation.y = Math.atan2(p.dx, p.dz);
+      if (p.visual === "turret") {
+        const prev = o.userData.prev as THREE.Vector3 | undefined;
+        o.position.set(p.x, y, p.z);
+        if (prev && prev.distanceToSquared(o.position) > 1e-4) o.lookAt(o.position.clone().multiplyScalar(2).sub(prev));
+        o.userData.prev = o.position.clone();
+      } else {
+        o.position.set(p.x, y, p.z);
+        o.rotation.y = Math.atan2(p.dx, p.dz);
+      }
       if (visible) {
         if (p.visual === "fireball" && Math.random() < 0.9) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.5, 0.8, (Math.random() - 0.5) * 1.5, new THREE.Color(0xff7a20), 0.7, 0.35, 0);
-        if (p.visual === "turret" && Math.random() < 0.7) this.particles.emit(p.x, y, p.z, 0, 0, 0, new THREE.Color(TEAM_GLOW[p.team === 1 ? 1 : 0]), 0.6, 0.25, 0);
+        if (p.visual === "turret") {
+          const tc = new THREE.Color(TEAM_GLOW[p.team === 1 ? 1 : 0]);
+          for (let k = 0; k < 2; k++) this.particles.emit(p.x + (Math.random() - 0.5) * 0.3, y + (Math.random() - 0.5) * 0.3, p.z + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, tc, 0.75, 0.32, 0);
+        }
         if (p.visual === "bigarrow") this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2, new THREE.Color(0xbff0ff), 0.8, 0.5, 0);
         if (p.visual === "dragon" || p.visual === "baron") this.particles.emit(p.x, y, p.z, 0, 0.3, 0, new THREE.Color(p.color), 0.8, 0.3, 0);
       }
@@ -514,8 +648,15 @@ export class View {
         this.scene.remove(chain);
         this.hookChains.delete(id);
       }
-      // Einschlag-Funken
-      if (o.visible) this.particles.burst(o.position.x, o.position.y, o.position.z, 0xffe8c0, 4, 3, 0.4, 0.25);
+      // Einschlag
+      if (o.visible) {
+        if (o.userData.visual === "turret") {
+          const tcol = TEAM_GLOW[o.userData.team === 1 ? 1 : 0];
+          this.particles.burst(o.position.x, o.position.y, o.position.z, tcol, 18, 6, 0.8, 0.35);
+          this.particles.burst(o.position.x, o.position.y, o.position.z, 0xffffff, 6, 3, 0.6, 0.2);
+          this.ground.ring(o.position.x, this.world.grid.groundAt(o.position.x, o.position.z), o.position.z, 0.2, 1.6, tcol, 0.3, 0.9);
+        } else this.particles.burst(o.position.x, o.position.y, o.position.z, 0xffe8c0, 4, 3, 0.4, 0.25);
+      }
     }
   }
 

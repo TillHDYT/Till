@@ -554,18 +554,58 @@ export class Hud {
       if (!m.alive || !this.seen(m) || m.hp >= m.stats.maxHp) continue;
       bar(m, (m.big ? 60 : 36) * scale, 5 * scale, "#e8b040");
     }
-    // Gebäude
-    for (const s of w.structures) {
-      if (!s.alive) continue;
-      if (s.hp >= s.stats.maxHp && s.kind !== "nexus") continue;
-      bar(s, 86 * scale, 8 * scale, s.team === team ? "#3f9bff" : "#e84a3a", (x, y) => {
-        if (s.invulnerable) {
-          ctx.fillStyle = "#c8aa6e";
-          ctx.font = `bold ${10 * scale}px sans-serif`;
-          ctx.textAlign = "center";
-          ctx.fillText("🛡", x + 43 * scale, y - 4 * scale);
-        }
-      });
+    // Gebäude: breite Leiste mit Goldrahmen und Segmenten, immer sichtbar
+    for (const st of w.structures) {
+      if (!st.alive) continue;
+      const pos = this.view.project(camera, st.x, g.groundAt(st.x, st.z) + st.height + 0.5, st.z, W, H);
+      if (!pos.on || pos.x < -120 || pos.x > W + 120 || pos.z < -40 || pos.z > H + 40) continue;
+      const bw = (st.kind === "nexus" ? 120 : st.kind === "inhib" ? 92 : 104) * scale;
+      const bh = 9 * scale;
+      const x = pos.x - bw / 2;
+      const y = pos.z - bh;
+      const ally = st.team === team;
+      ctx.fillStyle = "rgba(6,8,12,0.92)";
+      ctx.fillRect(x - 3, y - 3, bw + 6, bh + 6);
+      ctx.strokeStyle = st.invulnerable ? "#7a6a48" : "#c8aa6e";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - 3, y - 3, bw + 6, bh + 6);
+      const f = Math.max(0, st.hp / st.stats.maxHp);
+      const grad = ctx.createLinearGradient(0, y, 0, y + bh);
+      if (ally) {
+        grad.addColorStop(0, "#6cc0ff");
+        grad.addColorStop(1, "#1f6ad0");
+      } else {
+        grad.addColorStop(0, "#ff6a58");
+        grad.addColorStop(1, "#a8221a");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, bw * f, bh);
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.fillRect(x, y, bw * f, bh * 0.35);
+      // Segmente
+      ctx.strokeStyle = "rgba(0,0,0,0.75)";
+      ctx.lineWidth = 1.5;
+      for (let i = 1; i < 5; i++) {
+        const sx = x + (bw * i) / 5;
+        ctx.beginPath();
+        ctx.moveTo(sx, y);
+        ctx.lineTo(sx, y + bh);
+        ctx.stroke();
+      }
+      // goldene Spitze unten in der Mitte
+      ctx.fillStyle = "#c8aa6e";
+      ctx.beginPath();
+      ctx.moveTo(pos.x - 5 * scale, y + bh + 3);
+      ctx.lineTo(pos.x + 5 * scale, y + bh + 3);
+      ctx.lineTo(pos.x, y + bh + 8 * scale);
+      ctx.closePath();
+      ctx.fill();
+      if (st.invulnerable) {
+        ctx.font = `${11 * scale}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🛡", x - 12 * scale, y + bh / 2);
+      }
     }
     // Champions
     for (const c of w.champs) {

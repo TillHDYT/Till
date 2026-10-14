@@ -6,7 +6,7 @@ import { colored, mat4 } from "./terrain";
 import type { MinionType } from "./units";
 
 export const TEAM_COLOR = [0x3f9bff, 0xff4a3a];
-export const TEAM_GLOW = [0x66d0ff, 0xff7a50];
+export const TEAM_GLOW = [0x5cc8ff, 0xff3a2a];
 
 const vc = new THREE.MeshLambertMaterial({ vertexColors: true });
 
@@ -371,81 +371,318 @@ export function buildMonster(kind: CampKind, big: boolean): { root: THREE.Group;
 
 // ---------------- Gebäude ----------------
 
-export type StructModel = { root: THREE.Group; crystal: THREE.Object3D; glow: THREE.Sprite; top: THREE.Object3D; rubble: THREE.Object3D };
+export type StructModel = {
+  root: THREE.Group;
+  crystal: THREE.Object3D;
+  glow: THREE.Sprite;
+  top: THREE.Object3D;
+  rubble: THREE.Object3D;
+  crystalY: number;
+  staff?: THREE.Object3D;
+  outline?: THREE.Mesh;
+  shards?: THREE.Object3D;
+};
 
 function crystalMat(team: 0 | 1) {
   return new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] });
 }
 
+/** Facettierter, leuchtender Edelstein. */
+function gemMat(team: 0 | 1, opacity = 1) {
+  return new THREE.MeshPhongMaterial({
+    color: team === 0 ? 0x7fd4ff : 0xff3020,
+    emissive: team === 0 ? 0x1a78e0 : 0xc80c0c,
+    emissiveIntensity: 1,
+    specular: 0xffffff,
+    shininess: 90,
+    flatShading: true,
+    transparent: opacity < 1,
+    opacity,
+  });
+}
+
+const statueMat = () => new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 34, specular: 0x3c3c3c });
+const inlayMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+
+/** Transformation: Position, dann Drehung um Y, dann Kippen um X, dann Skalierung. */
+function trs(x: number, y: number, z: number, ry = 0, rx = 0, sx = 1, sy = 1, sz = 1, rz = 0) {
+  const m = new THREE.Matrix4().makeTranslation(x, y, z);
+  m.multiply(new THREE.Matrix4().makeRotationY(ry));
+  m.multiply(new THREE.Matrix4().makeRotationX(rx));
+  m.multiply(new THREE.Matrix4().makeRotationZ(rz));
+  m.multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
+  return m;
+}
+
+/** Roter Umriss (aufgeblähte Rückseite), wie beim Anvisieren in LoL. */
+function outlineMesh(geo: THREE.BufferGeometry, color: number, width: number) {
+  const mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace("#include <begin_vertex>", `vec3 transformed = vec3(position) + normal * ${width.toFixed(3)};`);
+  };
+  mat.customProgramCacheKey = () => `outline${width}`;
+  const m = new THREE.Mesh(geo, mat);
+  m.visible = false;
+  return m;
+}
+
+const Cyl = (rt: number, rb: number, h: number, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, seg);
+const Box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+
 export function buildTurret(team: 0 | 1): StructModel {
   const root = new THREE.Group();
-  const stone = 0x8a8678;
-  const dark = 0x5a564c;
-  const metal = team === 0 ? 0x4a6ea8 : 0xa8503a;
-  const base = mesh([
-    colored(new THREE.CylinderGeometry(2.0, 2.3, 1.0, 8), dark, mat4(0, 0.5, 0)),
-    colored(new THREE.CylinderGeometry(1.7, 1.9, 0.5, 8), stone, mat4(0, 1.2, 0)),
-  ]);
+  const C = {
+    stoneD: 0x343a3e,
+    stone: 0x535b61,
+    stoneL: 0x6c747a,
+    armor: 0x8f989f,
+    armorD: 0x59626a,
+    gold: 0xcaa14c,
+    goldD: 0x8a6a2e,
+    dark: 0x14171b,
+    pole: 0x3a3530,
+    cape: team === 0 ? 0x22407e : 0x701c1c,
+    inlay: team === 0 ? 0x46b4ff : 0xff3a26,
+  };
+  const mat = statueMat();
+
+  // Sockel aus Mauerwerk
+  const baseParts: THREE.BufferGeometry[] = [
+    colored(Cyl(2.6, 2.85, 0.5, 20), C.stoneD, mat4(0, 0.25, 0)),
+    colored(Cyl(2.35, 2.5, 0.5, 20), C.stone, mat4(0, 0.75, 0)),
+    colored(Cyl(1.95, 2.0, 0.16, 20), C.stoneD, mat4(0, 1.06, 0)),
+  ];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    baseParts.push(colored(Box(1.28, 0.34, 0.5), i % 2 ? C.stone : C.stoneL, trs(Math.sin(a) * 2.2, 1.13, Math.cos(a) * 2.2, a)));
+  }
+  const baseGeo = merge(baseParts);
+  const base = new THREE.Mesh(baseGeo, mat);
+  base.castShadow = true;
+  base.receiveShadow = true;
   root.add(base);
+
   const top = new THREE.Group();
-  top.add(
-    mesh([
-      colored(new THREE.CylinderGeometry(1.0, 1.4, 4.6, 8), stone, mat4(0, 3.6, 0)),
-      colored(new THREE.CylinderGeometry(1.45, 1.45, 0.35, 8), metal, mat4(0, 2.2, 0)),
-      colored(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 8), metal, mat4(0, 4.6, 0)),
-      colored(new THREE.CylinderGeometry(1.5, 1.1, 0.6, 8), dark, mat4(0, 6.1, 0)),
-      ...[0, 1, 2, 3].map((i) => {
-        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        return colored(new THREE.BoxGeometry(0.25, 1.6, 0.25), metal, mat4(Math.cos(a) * 1.0, 7.1, Math.sin(a) * 1.0, 1, 1, 1, Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25));
-      }),
-      colored(new THREE.ConeGeometry(1.2, 1.0, 8), metal, mat4(0, 8.4, 0)),
-    ]),
-  );
   root.add(top);
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), crystalMat(team));
-  crystal.scale.set(1, 1.6, 1);
-  crystal.position.y = 7.3;
-  root.add(crystal);
-  const glow = glowSprite(TEAM_GLOW[team], 4, 0.75);
-  glow.position.y = 7.3;
-  root.add(glow);
-  const rubble = mesh([
-    colored(new THREE.DodecahedronGeometry(0.8, 0), stone, mat4(0.6, 1.6, 0.3)),
-    colored(new THREE.DodecahedronGeometry(0.6, 0), dark, mat4(-0.7, 1.5, -0.2)),
-    colored(new THREE.CylinderGeometry(1.0, 1.3, 1.2, 8), stone, mat4(0, 1.9, 0)),
-  ]);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.82, 0.07, 6, 40), crystalMat(team));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 1.16;
+  top.add(ring);
+
+  // Statue
+  const body: THREE.BufferGeometry[] = [];
+  body.push(colored(Cyl(1.3, 1.6, 2.5, 14), C.armorD, mat4(0, 2.35, 0)));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.2;
+    body.push(colored(Box(0.72, 2.25, 0.16), C.armor, trs(Math.sin(a) * 1.5, 2.3, Math.cos(a) * 1.5, a, -0.06)));
+    body.push(colored(Box(0.74, 0.14, 0.2), C.gold, trs(Math.sin(a) * 1.55, 1.22, Math.cos(a) * 1.55, a)));
+  }
+  body.push(colored(new THREE.TorusGeometry(1.36, 0.13, 6, 24), C.gold, mat4(0, 3.55, 0, 1, 1, 1, Math.PI / 2)));
+  body.push(colored(Cyl(1.62, 1.36, 1.9, 14), C.armor, mat4(0, 4.5, 0)));
+  body.push(colored(Box(1.15, 1.25, 0.3), C.armorD, mat4(0, 4.55, 1.32)));
+  body.push(colored(new THREE.OctahedronGeometry(0.42, 0), C.gold, mat4(0, 4.75, 1.5, 1, 1.25, 0.45)));
+  body.push(colored(new THREE.TorusGeometry(1.6, 0.1, 6, 24), C.gold, mat4(0, 5.42, 0, 1, 1, 1, Math.PI / 2)));
+  for (const sd of [-1, 1]) {
+    body.push(colored(new THREE.SphereGeometry(1.0, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), C.armor, mat4(1.55 * sd, 5.15, 0, 1.15, 0.95, 1.08)));
+    body.push(colored(new THREE.TorusGeometry(0.98, 0.09, 6, 22), C.gold, mat4(1.55 * sd, 5.12, 0, 1.15, 1, 1.08, Math.PI / 2)));
+    body.push(colored(new THREE.SphereGeometry(0.55, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), C.gold, mat4(1.68 * sd, 5.72, 0, 1, 0.8, 1)));
+    body.push(colored(new THREE.ConeGeometry(0.16, 0.7, 5), C.goldD, mat4(2.15 * sd, 5.85, -0.1, 1, 1, 1, 0, 0, -0.9 * sd)));
+  }
+  // Kopf mit Kapuze und goldenem Gesichtsring
+  body.push(colored(new THREE.SphereGeometry(0.95, 14, 10), C.armorD, mat4(0, 6.4, -0.12, 1, 1.12, 1.08)));
+  body.push(colored(new THREE.ConeGeometry(0.62, 0.95, 10), C.armorD, mat4(0, 7.2, -0.42, 1, 1, 1, -0.55)));
+  body.push(colored(new THREE.SphereGeometry(0.62, 12, 8), C.dark, mat4(0, 6.22, 0.42, 0.85, 1.05, 0.7)));
+  body.push(colored(Box(1.0, 0.2, 0.3), C.gold, trs(0, 6.78, 0.68, 0, 0.35)));
+  body.push(colored(Box(0.22, 0.62, 0.22), C.gold, trs(0, 6.25, 0.86, 0, 0.2)));
+  body.push(colored(Box(0.18, 0.75, 0.24), C.gold, trs(-0.46, 6.15, 0.62, -0.5, 0, 1, 1, 1, 0.25)));
+  body.push(colored(Box(0.18, 0.75, 0.24), C.gold, trs(0.46, 6.15, 0.62, 0.5, 0, 1, 1, 1, -0.25)));
+  body.push(colored(new THREE.ConeGeometry(0.17, 0.6, 5), C.gold, mat4(0, 7.0, 0.62, 1, 1, 1, 0.35)));
+  // Umhang
+  body.push(colored(Box(2.6, 4.8, 0.14), C.cape, trs(0, 3.4, -1.38, 0, -0.1)));
+  // linker Arm hinter dem Schild
+  body.push(colored(Cyl(0.36, 0.32, 1.6, 8), C.armor, trs(1.82, 4.3, 0.45, 0, 0.55)));
+
+  // Schild mit Kristall-Einlagen
+  const SH = trs(0.9, 3.0, 1.82, -0.32, 0.1);
+  const sh = (m: THREE.Matrix4) => SH.clone().multiply(m);
+  body.push(colored(Box(1.95, 2.5, 0.32), C.armor, sh(trs(0, 0.35, 0))));
+  body.push(colored(Box(1.38, 1.38, 0.32), C.armor, sh(trs(0, -0.9, 0, 0, 0, 1, 1, 1, Math.PI / 4))));
+  body.push(colored(Box(2.08, 0.18, 0.38), C.gold, sh(trs(0, 1.62, 0))));
+  for (const sd of [-1, 1]) {
+    body.push(colored(Box(0.18, 2.5, 0.38), C.gold, sh(trs(1.0 * sd, 0.35, 0))));
+    body.push(colored(Box(1.42, 0.17, 0.38), C.gold, sh(trs(0.5 * sd, -1.42, 0, 0, 0, 1, 1, 1, Math.PI / 4 * sd))));
+  }
+  body.push(colored(new THREE.OctahedronGeometry(0.5, 0), C.gold, sh(trs(0, 0.0, 0.17, 0, 0, 0.92, 1.35, 0.25))));
+  const bodyGeo = merge(body);
+  const bodyMesh = new THREE.Mesh(bodyGeo, mat);
+  bodyMesh.castShadow = true;
+  bodyMesh.receiveShadow = true;
+  top.add(bodyMesh);
+
+  const inlay = new THREE.Mesh(
+    merge([
+      colored(new THREE.OctahedronGeometry(0.5, 0), C.inlay, sh(trs(0, 0.0, 0.22, 0, 0, 0.7, 1.05, 0.25))),
+      colored(Box(1.05, 0.24, 0.1), C.inlay, sh(trs(-0.42, 1.05, 0.19, 0, 0, 1, 1, 1, -0.55))),
+      colored(Box(1.05, 0.24, 0.1), C.inlay, sh(trs(0.42, 1.05, 0.19, 0, 0, 1, 1, 1, 0.55))),
+      colored(Box(0.6, 0.16, 0.1), C.inlay, sh(trs(0, -1.05, 0.19))),
+      colored(new THREE.OctahedronGeometry(0.16, 0), C.inlay, mat4(0, 4.75, 1.66, 1, 1.3, 0.5)),
+    ]),
+    inlayMat,
+  );
+  top.add(inlay);
+
+  // Stab mit Kristall (rechte Hand), eigene Gruppe für den Rückstoß
+  const staff = new THREE.Group();
+  staff.position.set(-1.6, 5.2, 0);
+  top.add(staff);
+  const staffMesh = new THREE.Mesh(
+    merge([
+      colored(Cyl(0.36, 0.3, 1.6, 8), C.armor, trs(-0.08, -0.65, 0.28, 0, 0.45)),
+      colored(new THREE.SphereGeometry(0.33, 8, 6), C.armorD, mat4(-0.15, -1.3, 0.55)),
+      colored(Cyl(0.11, 0.11, 6.7, 6), C.pole, mat4(-0.15, -0.25, 0.55)),
+      colored(new THREE.TorusGeometry(0.22, 0.08, 6, 14), C.gold, mat4(-0.15, 2.85, 0.55, 1, 1, 1, Math.PI / 2)),
+      colored(Cyl(0.16, 0.1, 0.5, 6), C.gold, mat4(-0.15, 3.1, 0.55)),
+      ...[0, 1, 2].map((i) => {
+        const a = (i / 3) * Math.PI * 2;
+        return colored(new THREE.ConeGeometry(0.08, 1.0, 4), C.gold, trs(-0.15 + Math.sin(a) * 0.28, 3.55, 0.55 + Math.cos(a) * 0.28, a, 0.4));
+      }),
+    ]),
+    mat,
+  );
+  staffMesh.castShadow = true;
+  staff.add(staffMesh);
+  const crystalY = 3.85;
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), gemMat(team));
+  crystal.scale.set(0.85, 1.75, 0.85);
+  crystal.position.set(-0.15, crystalY, 0.55);
+  staff.add(crystal);
+  const glow = glowSprite(TEAM_GLOW[team], 3.6, 0.8);
+  glow.position.copy(crystal.position);
+  staff.add(glow);
+
+  // Trümmer nach der Zerstörung
+  const rubble = new THREE.Mesh(
+    merge([
+      colored(Cyl(1.35, 1.6, 1.2, 12), C.armorD, mat4(0, 1.7, 0)),
+      colored(new THREE.DodecahedronGeometry(0.75, 0), C.armor, mat4(1.4, 1.5, 0.9, 1, 0.7, 1, 0.4, 0.2)),
+      colored(new THREE.DodecahedronGeometry(0.55, 0), C.stoneL, mat4(-1.3, 1.4, -0.8, 1, 0.8, 1, 0.1, 1.1)),
+      colored(Box(1.6, 0.3, 1.9), C.armor, trs(1.6, 1.25, -1.4, 0.6, 0.15)),
+      colored(new THREE.OctahedronGeometry(0.4, 0), 0x3a3238, mat4(-1.7, 1.3, 1.1, 0.8, 1.6, 0.8, 1.2, 0, 0.4)),
+    ]),
+    mat,
+  );
   rubble.visible = false;
+  rubble.castShadow = true;
   root.add(rubble);
-  return { root, crystal, glow, top, rubble };
+
+  const outline = outlineMesh(merge([baseGeo.clone(), bodyGeo.clone()]), 0xff2a1a, 0.09);
+  root.add(outline);
+
+  return { root, crystal, glow, top, rubble, crystalY, staff, outline };
 }
 
 export function buildInhibitor(team: 0 | 1): StructModel {
   const root = new THREE.Group();
-  const stone = 0x7a7c84;
-  const metal = team === 0 ? 0x4a6ea8 : 0xa8503a;
+  const C = { stoneD: 0x343a3e, stone: 0x535b61, stoneL: 0x6c747a, gold: 0xcaa14c, goldD: 0x8a6a2e };
+  const mat = statueMat();
+  const parts: THREE.BufferGeometry[] = [
+    colored(Cyl(2.95, 3.2, 0.45, 22), C.stoneD, mat4(0, 0.22, 0)),
+    colored(Cyl(2.6, 2.8, 0.5, 22), C.stone, mat4(0, 0.68, 0)),
+    colored(Cyl(1.95, 2.0, 0.12, 22), C.stoneD, mat4(0, 0.98, 0)),
+    colored(new THREE.TorusGeometry(2.05, 0.12, 6, 30), C.gold, mat4(0, 1.0, 0, 1, 1, 1, Math.PI / 2)),
+  ];
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    parts.push(colored(Box(1.15, 0.3, 0.45), i % 2 ? C.stone : C.stoneL, trs(Math.sin(a) * 2.5, 1.0, Math.cos(a) * 2.5, a)));
+  }
+  // Vier goldene Klauen, die den Kristall halten
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    parts.push(colored(Box(0.62, 0.9, 0.62), C.stoneL, trs(Math.sin(a) * 2.25, 1.55, Math.cos(a) * 2.25, a)));
+    parts.push(colored(Box(0.34, 2.1, 0.34), C.gold, trs(Math.sin(a) * 2.05, 2.75, Math.cos(a) * 2.05, a, -0.38)));
+    parts.push(colored(new THREE.ConeGeometry(0.22, 1.5, 5), C.goldD, trs(Math.sin(a) * 1.45, 4.25, Math.cos(a) * 1.45, a, -0.95)));
+    parts.push(colored(new THREE.SphereGeometry(0.26, 8, 6), C.gold, mat4(Math.sin(a) * 1.68, 3.75, Math.cos(a) * 1.68)));
+  }
+  const baseMesh = new THREE.Mesh(merge(parts), mat);
+  baseMesh.castShadow = true;
+  baseMesh.receiveShadow = true;
+  root.add(baseMesh);
+
   const top = new THREE.Group();
-  root.add(
-    mesh([
-      colored(new THREE.CylinderGeometry(2.4, 2.7, 0.6, 12), stone, mat4(0, 0.3, 0)),
-      colored(new THREE.TorusGeometry(1.9, 0.18, 6, 20), metal, mat4(0, 0.7, 0, 1, 1, 1, Math.PI / 2)),
-      ...[0, 1, 2, 3, 4, 5].map((i) => {
-        const a = (i / 6) * Math.PI * 2;
-        return colored(new THREE.BoxGeometry(0.3, 1.4, 0.3), stone, mat4(Math.cos(a) * 2.1, 1.1, Math.sin(a) * 2.1, 1, 1, 1, Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35));
-      }),
-    ]),
-  );
   root.add(top);
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.8, 0), crystalMat(team));
-  crystal.scale.set(1, 1.8, 1);
-  crystal.position.y = 2.8;
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.05, 28), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team], transparent: true, opacity: 0.55 }));
+  pool.position.y = 1.07;
+  top.add(pool);
+  const crystalY = 3.5;
+  const crystal = new THREE.Group();
+  crystal.position.y = crystalY;
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.0, 0), gemMat(team, 0.92));
+  gem.scale.set(0.95, 1.9, 0.95);
+  crystal.add(gem);
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.45, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  core.scale.set(1, 2, 1);
+  crystal.add(core);
   top.add(crystal);
-  const glow = glowSprite(TEAM_GLOW[team], 5, 0.8);
-  glow.position.y = 2.8;
+  const shards = new THREE.Group();
+  shards.position.y = crystalY;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const sMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), gemMat(team));
+    sMesh.scale.set(1, 1.8, 1);
+    sMesh.position.set(Math.cos(a) * 1.75, Math.sin(a * 2) * 0.4, Math.sin(a) * 1.75);
+    shards.add(sMesh);
+  }
+  top.add(shards);
+  const glow = glowSprite(TEAM_GLOW[team], 7, 0.75);
+  glow.position.y = crystalY;
   top.add(glow);
-  const rubble = mesh([colored(new THREE.DodecahedronGeometry(0.5, 0), 0x3a3c44, mat4(0.3, 0.9, 0.2)), colored(new THREE.DodecahedronGeometry(0.4, 0), 0x3a3c44, mat4(-0.4, 0.8, -0.3))]);
+
+  const rubble = new THREE.Mesh(
+    merge([
+      colored(new THREE.OctahedronGeometry(0.5, 0), 0x3a3238, mat4(0.5, 1.35, 0.3, 0.8, 1.5, 0.8, 1.1, 0, 0.5)),
+      colored(new THREE.OctahedronGeometry(0.4, 0), 0x2c262c, mat4(-0.6, 1.25, -0.4, 0.8, 1.5, 0.8, 0.3, 0, 1.3)),
+      colored(new THREE.OctahedronGeometry(0.3, 0), 0x3a3238, mat4(0.1, 1.2, -0.9, 0.8, 1.5, 0.8, 1.4, 0, 0.2)),
+    ]),
+    mat,
+  );
   rubble.visible = false;
   root.add(rubble);
-  return { root, crystal, glow, top, rubble };
+  const outline = outlineMesh(merge(parts.map((g) => g.clone())), 0xff2a1a, 0.08);
+  root.add(outline);
+  return { root, crystal, glow, top, rubble, crystalY, shards, outline };
+}
+
+/** Feuerschale auf Steinsäule (Dekoration in den Basen). */
+export function buildBrazier() {
+  const root = new THREE.Group();
+  const m = new THREE.Mesh(
+    merge([
+      colored(Cyl(0.55, 0.75, 0.4, 10), 0x343a3e, mat4(0, 0.2, 0)),
+      colored(Cyl(0.42, 0.52, 1.5, 10), 0x5c646a, mat4(0, 1.15, 0)),
+      colored(new THREE.TorusGeometry(0.47, 0.07, 6, 16), 0xcaa14c, mat4(0, 1.5, 0, 1, 1, 1, Math.PI / 2)),
+      colored(Cyl(0.85, 0.45, 0.55, 12), 0x3a3530, mat4(0, 2.15, 0)),
+      colored(new THREE.TorusGeometry(0.85, 0.08, 6, 18), 0xcaa14c, mat4(0, 2.42, 0, 1, 1, 1, Math.PI / 2)),
+      colored(Cyl(0.7, 0.7, 0.1, 12), 0xff8a2a, mat4(0, 2.38, 0)),
+    ]),
+    statueMat(),
+  );
+  m.castShadow = true;
+  root.add(m);
+  const g = glowSprite(0xff8a30, 3.2, 0.7);
+  g.position.y = 2.8;
+  root.add(g);
+  // Flamme: zwei additive Kegel, die flackern
+  const flame = new THREE.Group();
+  flame.position.y = 2.42;
+  const fm = (color: number, r: number, h: number, o: number) => {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    c.position.y = h / 2;
+    flame.add(c);
+  };
+  fm(0xff5a10, 0.62, 1.6, 0.55);
+  fm(0xffc040, 0.36, 1.05, 0.75);
+  root.add(flame);
+  return { root, fireY: 2.5, glow: g, flame };
 }
 
 export function buildNexus(team: 0 | 1): StructModel {
@@ -481,7 +718,7 @@ export function buildNexus(team: 0 | 1): StructModel {
   const rubble = mesh([colored(new THREE.DodecahedronGeometry(1.2, 0), 0x3a3c44, mat4(0.6, 2.0, 0.2)), colored(new THREE.DodecahedronGeometry(1.0, 0), 0x2c2e36, mat4(-0.8, 1.9, -0.5))]);
   rubble.visible = false;
   root.add(rubble);
-  return { root, crystal, glow, top, rubble };
+  return { root, crystal, glow, top, rubble, crystalY: 5.2 };
 }
 
 export function buildFountain(team: 0 | 1) {

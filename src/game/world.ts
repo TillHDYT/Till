@@ -6,6 +6,7 @@ import {
   FOUNTAIN_RADIUS,
   SPAWN,
   STRUCTURES,
+  distToSegment,
   lanePath,
   type CampKind,
   type CampSpec,
@@ -18,6 +19,7 @@ import {
   Minion,
   Monster,
   Structure,
+  TURRET_MUZZLE,
   Unit,
   type Buff,
   type DashOpts,
@@ -68,6 +70,7 @@ export type Projectile = {
   x: number;
   z: number;
   y: number;
+  y0: number;
   dx: number;
   dz: number;
   speed: number;
@@ -202,6 +205,26 @@ export class World {
             ? new Structure("inhib", s.team, s.pos, s.lane, null)
             : new Structure("nexus", s.team, s.pos, "base", null);
       this.structures.push(st);
+    }
+    // Türme schauen die Lane entlang zum Gegner, Basisgebäude zur Kartenmitte
+    for (const st of this.structures) {
+      let dx = 100 - st.x;
+      let dz = 100 - st.z;
+      if (st.kind === "turret" && st.lane !== "base") {
+        const path = lanePath(st.team as 0 | 1, st.lane);
+        let bi = 0;
+        let bd = Infinity;
+        for (let i = 0; i < path.length - 1; i++) {
+          const d = distToSegment(st, path[i], path[i + 1]);
+          if (d < bd) {
+            bd = d;
+            bi = i;
+          }
+        }
+        dx = path[bi + 1].x - path[bi].x;
+        dz = path[bi + 1].z - path[bi].z;
+      }
+      st.facing = Math.atan2(dx, dz);
     }
 
     const pick = (avoid: Set<string>, role: Role): ChampDef => {
@@ -351,6 +374,7 @@ export class World {
       x: owner.x + o.dx * 0.6,
       z: owner.z + o.dz * 0.6,
       y: 1.3,
+      y0: 1.3,
       dx: o.dx,
       dz: o.dz,
       speed: o.speed,
@@ -370,19 +394,23 @@ export class World {
     this.events.push({ type: "sound", name: o.visual === "fireball" ? "fire" : o.visual === "hook" ? "hook" : "shoot", x: owner.x, z: owner.z });
   }
 
-  homing(owner: Unit, target: Unit, speed: number, visual: ProjVisual, color: number, onHit: (u: Unit) => void, y = 1.4) {
+  homing(owner: Unit, target: Unit, speed: number, visual: ProjVisual, color: number, onHit: (u: Unit) => void, y = 1.4, from?: V2) {
+    const sx = from ? from.x : owner.x;
+    const sz = from ? from.z : owner.z;
     this.projectiles.push({
       id: this.nextId++,
       owner,
       team: owner.team,
-      x: owner.x,
-      z: owner.z,
+      x: sx,
+      z: sz,
       y,
+      y0: y,
       dx: 0,
       dz: 0,
       speed,
       traveled: 0,
-      range: 999,
+      // bei zielsuchenden Geschossen: Startabstand, für die Flugkurve
+      range: Math.max(0.5, Math.hypot(target.x - sx, target.z - sz)),
       width: 0.3,
       homing: target,
       visual,
@@ -606,11 +634,12 @@ export class World {
 
     if (u instanceof Structure) {
       const t = target;
+      const muzzle = this.turretMuzzle(u);
       let dmg = u.stats.ad + this.t * 0.06;
       if (t instanceof Minion) {
         const pct = t.mtype === "melee" ? 0.45 : t.mtype === "caster" ? 0.7 : t.mtype === "siege" ? 0.14 : 0.08;
         dmg = t.stats.maxHp * pct;
-        this.homing(u, t, 26, "turret", u.team === 0 ? 0x66ccff : 0xff7050, (x) => this.damage(u, x, dmg, "true"), 7.5);
+        this.homing(u, t, 30, "turret", u.team === 0 ? 0x66ccff : 0xff7050, (x) => this.damage(u, x, dmg, "true"), TURRET_MUZZLE.y, muzzle);
       } else {
         if (u.heatTarget === t) u.heat = Math.min(3, u.heat + 1);
         else {
@@ -618,7 +647,7 @@ export class World {
           u.heatTarget = t;
         }
         dmg *= 1 + u.heat * 0.4;
-        this.homing(u, t, 26, "turret", u.team === 0 ? 0x66ccff : 0xff7050, (x) => this.damage(u, x, dmg, "phys"), 7.5);
+        this.homing(u, t, 30, "turret", u.team === 0 ? 0x66ccff : 0xff7050, (x) => this.damage(u, x, dmg, "phys"), TURRET_MUZZLE.y, muzzle);
       }
       this.events.push({ type: "sound", name: "turret", x: u.x, z: u.z });
       return;
@@ -648,6 +677,13 @@ export class World {
         this.addFx({ type: "hit", x: target.x, z: target.z, color: 0xffd0a0 });
       }
     }
+  }
+
+  /** Weltposition des Turmkristalls. */
+  turretMuzzle(s: Unit): V2 {
+    const c = Math.cos(s.facing);
+    const sn = Math.sin(s.facing);
+    return { x: s.x + TURRET_MUZZLE.x * c + TURRET_MUZZLE.z * sn, z: s.z - TURRET_MUZZLE.x * sn + TURRET_MUZZLE.z * c };
   }
 
   private kill(u: Unit, src: Unit | null) {
@@ -1531,7 +1567,8 @@ export class World {
         p.dz = dz / d;
         p.x += p.dx * step;
         p.z += p.dz * step;
-        p.y += (1.2 - p.y) * Math.min(1, dt * 3);
+        const k = Math.min(1, (d - step) / p.range);
+        p.y = 1.2 + (p.y0 - 1.2) * k;
         continue;
       }
       const step = p.speed * dt;

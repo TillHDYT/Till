@@ -307,6 +307,9 @@ export class Minion extends Unit {
   }
 }
 
+/** Lokale Lage des Turmkristalls relativ zum Turm (Blickrichtung +z). */
+export const TURRET_MUZZLE = { x: -1.75, y: 9.05, z: 0.55 };
+
 export type TurretTier = "outer" | "inner" | "inhib" | "nexus";
 
 export class Structure extends Unit {
@@ -332,7 +335,7 @@ export class Structure extends Unit {
     super(kind, team, pos.x, pos.z, r, base);
     this.lane = lane;
     this.tier = tier;
-    this.height = kind === "turret" ? 8.5 : kind === "inhib" ? 4 : 7;
+    this.height = kind === "turret" ? 9.9 : kind === "inhib" ? 5.6 : 7.5;
   }
 }
 
