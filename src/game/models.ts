@@ -1070,30 +1070,91 @@ type GuardianAsset = {
 };
 let guardian: GuardianAsset | null = null;
 
-/** Lädt die Wächterstatue einmalig. Muss vor dem Aufbau der Szene fertig sein. */
+/**
+ * Lädt die Wächterstatue einmalig. Muss vor dem Aufbau der Szene fertig sein.
+ * Nur ein Fehler am GLB selbst führt zum Ersatzmodell; die blaue Textur ist optional.
+ */
 export async function loadGuardian(): Promise<boolean> {
   if (guardian) return true;
+  let statue: THREE.Mesh;
+  let staff: THREE.Object3D;
+  let red: THREE.MeshStandardMaterial;
   try {
     const gltf = await new GLTFLoader().loadAsync(guardianUrl);
-    const statue = gltf.scene.getObjectByName("Statue") as THREE.Mesh | undefined;
-    const staff = gltf.scene.getObjectByName("Staff");
-    if (!statue || !staff || !staff.getObjectByName("Crystal")) throw new Error("Statue, Stab oder Kristall fehlt im Modell");
-    const red = statue.material as THREE.MeshStandardMaterial;
-    const blue = red.clone();
-    const blueMap = await new THREE.TextureLoader().loadAsync(guardianBlueUrl);
-    blueMap.flipY = false;
-    blueMap.colorSpace = THREE.SRGBColorSpace;
-    blueMap.anisotropy = 4;
-    blue.map = blueMap;
-    for (const m of [red, blue]) {
-      if (m.map) m.map.anisotropy = 4;
-    }
-    guardian = { statue, staff, materials: [blue, red] };
-    return true;
+    const s = gltf.scene.getObjectByName("Statue") as THREE.Mesh | undefined;
+    const st = gltf.scene.getObjectByName("Staff");
+    if (!s?.isMesh || !st || !st.getObjectByName("Crystal")) throw new Error("GLB benötigt die Meshes Statue, Staff und Crystal");
+    const mat = Array.isArray(s.material) ? s.material[0] : s.material;
+    if (!mat) throw new Error("Wächtermodell besitzt kein Material");
+    statue = s;
+    staff = st;
+    red = mat as THREE.MeshStandardMaterial;
   } catch (err) {
-    console.warn("Wächterstatue konnte nicht geladen werden, nutze Ersatzmodell:", err);
+    console.error("Wächter-GLB konnte nicht geladen werden, nutze Ersatzmodell:", err);
     return false;
   }
+  // Ab hier ist das Modell da und bleibt es, egal ob die blaue Textur klappt
+  const blue = red.clone();
+  blue.map = await blueGuardianMap(red.map);
+  for (const m of [red, blue]) {
+    if (m.map) m.map.anisotropy = 4;
+  }
+  guardian = { statue, staff, materials: [blue, red] };
+  return true;
+}
+
+/** Blaue Team-Textur: erst die mitgelieferte Datei, sonst die rote GLB-Textur umfärben, sonst die rote behalten. */
+async function blueGuardianMap(redMap: THREE.Texture | null): Promise<THREE.Texture | null> {
+  try {
+    const img = await new THREE.ImageLoader().loadAsync(guardianBlueUrl);
+    return withImage(redMap, img);
+  } catch (err) {
+    console.warn("Blaue Wächtertextur nicht verfügbar, färbe die GLB-Textur um:", err);
+  }
+  if (!redMap) return null;
+  try {
+    return withImage(redMap, recolorRedToBlue(redMap.image as CanvasImageSource & { width: number; height: number }));
+  } catch (err) {
+    console.warn("Umfärben nicht möglich, blaue Türme behalten die GLB-Textur:", err);
+    return redMap;
+  }
+}
+
+/** Neue Textur mit eigenem Bild, aber denselben Einstellungen (UV-Kanal, Wrap, flipY) wie die GLB-Textur. */
+function withImage(like: THREE.Texture | null, img: TexImageSource): THREE.Texture {
+  const t = like ? like.clone() : new THREE.Texture();
+  t.source = new THREE.TextureSource(img);
+  if (!like) {
+    t.flipY = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+  }
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Färbt die roten Stoffflächen blau, Stahl, Gold und Stein bleiben wie sie sind. */
+function recolorRedToBlue(img: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) throw new Error("Kein 2D-Kontext");
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i];
+    const gr = p[i + 1];
+    const b = p[i + 2];
+    // Anteil "Rot", weich ausgeblendet, damit Gold (r > g > b) unberührt bleibt
+    const k = Math.min(1, (r - Math.max(gr, b) * 1.3) / (r * 0.3 + 1));
+    if (k <= 0) continue;
+    p[i] = r + (b - r) * k;
+    p[i + 1] = gr + (Math.min(255, gr * 1.9) - gr) * k;
+    p[i + 2] = b + (r * 0.93 - b) * k;
+  }
+  g.putImageData(data, 0, 0);
+  return c;
 }
 
 /** Metall braucht eine Umgebung zum Spiegeln, sonst wirkt es schwarz. Einmal pro Renderer aufrufen. */
