@@ -486,6 +486,66 @@ function outlineMesh(geo: THREE.BufferGeometry, color: number, width: number) {
   return m;
 }
 
+/** Markiert ein Material im Stencil-Puffer, damit der Umriss nur außerhalb der Figur erscheint. */
+function markSilhouette<T extends THREE.Material>(m: T) {
+  m.stencilWrite = true;
+  m.stencilRef = 1;
+  m.stencilFunc = THREE.AlwaysStencilFunc;
+  m.stencilZPass = THREE.ReplaceStencilOp;
+  return m;
+}
+
+/** Normalen über alle Kopien eines Punktes gemittelt (UV-Nähte), damit der aufgeblähte Umriss keine Risse bekommt. */
+function smoothOutlineGeometry(src: THREE.BufferGeometry) {
+  const pos = src.getAttribute("position");
+  const nor = src.getAttribute("normal");
+  const sum = new Map<string, number[]>();
+  const keyOf = (i: number) => `${Math.round(pos.getX(i) * 500)},${Math.round(pos.getY(i) * 500)},${Math.round(pos.getZ(i) * 500)}`;
+  for (let i = 0; i < pos.count; i++) {
+    const k = keyOf(i);
+    const v = sum.get(k) ?? [0, 0, 0];
+    v[0] += nor.getX(i);
+    v[1] += nor.getY(i);
+    v[2] += nor.getZ(i);
+    sum.set(k, v);
+  }
+  const sm = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const v = sum.get(keyOf(i))!;
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    sm[i * 3] = v[0] / l;
+    sm[i * 3 + 1] = v[1] / l;
+    sm[i * 3 + 2] = v[2] / l;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", pos);
+  g.setAttribute("smoothNormal", new THREE.BufferAttribute(sm, 3));
+  g.setIndex(src.getIndex());
+  g.boundingSphere = src.boundingSphere;
+  return g;
+}
+
+/** Roter Umriss wie in LoL: nur die Außenkante der Figur, keine roten Ränder auf der Figur selbst. */
+function silhouetteOutline(geo: THREE.BufferGeometry, color: number, width: number) {
+  const mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
+  mat.stencilWrite = true;
+  mat.stencilRef = 1;
+  mat.stencilFunc = THREE.NotEqualStencilFunc;
+  mat.stencilFail = THREE.KeepStencilOp;
+  mat.stencilZFail = THREE.KeepStencilOp;
+  mat.stencilZPass = THREE.KeepStencilOp;
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec3 smoothNormal;")
+      .replace("#include <begin_vertex>", `vec3 transformed = vec3(position) + smoothNormal * ${width.toFixed(3)};`);
+  };
+  mat.customProgramCacheKey = () => `silhouette${width}`;
+  const m = new THREE.Mesh(geo, mat);
+  m.renderOrder = 2;
+  m.visible = false;
+  return m;
+}
+
 const Cyl = (rt: number, rb: number, h: number, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, Math.max(seg, 24));
 const Box = (w: number, h: number, d: number) => new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h, d) * 0.14);
 
@@ -1098,6 +1158,8 @@ type GuardianAsset = {
   statue: THREE.Mesh;
   staff: THREE.Object3D;
   materials: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+  /** Statue mit geglätteten Normalen für den Umriss */
+  outlineGeo: THREE.BufferGeometry;
 };
 let guardian: GuardianAsset | null = null;
 
@@ -1111,7 +1173,7 @@ export async function loadGuardian(): Promise<boolean> {
   let staff: THREE.Object3D;
   let red: THREE.MeshStandardMaterial;
   try {
-    const gltf = await new GLTFLoader().loadAsync(guardianUrl);
+    const gltf = await loadGlbOffline(guardianUrl);
     const s = gltf.scene.getObjectByName("Statue") as THREE.Mesh | undefined;
     const st = gltf.scene.getObjectByName("Staff");
     if (!s?.isMesh || !st || !st.getObjectByName("Crystal")) throw new Error("GLB benötigt die Meshes Statue, Staff und Crystal");
@@ -1129,9 +1191,77 @@ export async function loadGuardian(): Promise<boolean> {
   blue.map = await blueGuardianMap(red.map);
   for (const m of [red, blue]) {
     if (m.map) m.map.anisotropy = 4;
+    markSilhouette(m);
   }
-  guardian = { statue, staff, materials: [blue, red] };
+  guardian = { statue, staff, materials: [blue, red], outlineGeo: smoothOutlineGeometry(statue.geometry) };
   return true;
+}
+
+/**
+ * GLB laden, ohne das Netzwerk zu benutzen. In abgeschotteten Umgebungen (z. B. der Vorschau in der
+ * Claude-App) sind fetch() und blob:-Bilder gesperrt, data:-Bilder aber erlaubt. Deshalb: eingebettete
+ * Datei selbst dekodieren, Texturen als data:-Bilder einsetzen und über <img> laden lassen.
+ */
+async function loadGlbOffline(url: string) {
+  const loader = new GLTFLoader();
+  loader.register((parser) => {
+    parser.textureLoader = new THREE.TextureLoader(parser.options.manager);
+    return { name: "kluft_img_textures" };
+  });
+  if (!url.startsWith("data:")) return loader.loadAsync(url);
+  const glb = base64ToBytes(url.slice(url.indexOf(",") + 1));
+  return loader.parseAsync(inlineGlbImages(glb).buffer as ArrayBuffer, "");
+}
+
+function base64ToBytes(b64: string) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** Schreibt die Bilder eines GLB als data:-URI in dessen JSON-Teil und baut das GLB neu zusammen. */
+function inlineGlbImages(glb: Uint8Array) {
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  if (view.getUint32(0, true) !== 0x46546c67) throw new Error("Keine GLB-Datei");
+  const jsonLen = view.getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLen)));
+  const binStart = 20 + jsonLen;
+  const binLen = view.getUint32(binStart, true);
+  const bin = glb.subarray(binStart + 8, binStart + 8 + binLen);
+  for (const img of json.images ?? []) {
+    if (img.bufferView === undefined) continue;
+    const bv = json.bufferViews[img.bufferView];
+    const bytes = bin.subarray(bv.byteOffset ?? 0, (bv.byteOffset ?? 0) + bv.byteLength);
+    img.uri = `data:${img.mimeType ?? "image/jpeg"};base64,${bytesToBase64(bytes)}`;
+    delete img.bufferView;
+  }
+  let text = new TextEncoder().encode(JSON.stringify(json));
+  const pad = (4 - (text.length % 4)) % 4;
+  if (pad) {
+    const t = new Uint8Array(text.length + pad).fill(0x20);
+    t.set(text);
+    text = t;
+  }
+  const total = 12 + 8 + text.length + 8 + bin.length;
+  const out = new Uint8Array(total);
+  const ov = new DataView(out.buffer);
+  ov.setUint32(0, 0x46546c67, true);
+  ov.setUint32(4, 2, true);
+  ov.setUint32(8, total, true);
+  ov.setUint32(12, text.length, true);
+  ov.setUint32(16, 0x4e4f534a, true);
+  out.set(text, 20);
+  ov.setUint32(20 + text.length, bin.length, true);
+  ov.setUint32(24 + text.length, 0x004e4942, true);
+  out.set(bin, 28 + text.length);
+  return out;
 }
 
 /** Blaue Team-Textur: erst die mitgelieferte Datei, sonst die rote GLB-Textur umfärben, sonst die rote behalten. */
@@ -1226,7 +1356,7 @@ export function buildTurret(team: 0 | 1): StructModel {
   });
   top.add(staff);
   const crystal = staff.getObjectByName("Crystal") as THREE.Mesh;
-  crystal.material = gemMat(team);
+  crystal.material = markSilhouette(gemMat(team));
   const crystalY = crystal.position.y;
   const glow = glowSprite(TEAM_GLOW[team], 3.8, 0.85);
   glow.position.copy(crystal.position);
@@ -1255,7 +1385,7 @@ export function buildTurret(team: 0 | 1): StructModel {
   rubble.castShadow = true;
   root.add(rubble);
 
-  const outline = outlineMesh(guardian.statue.geometry, 0xff2a1a, 0.025);
-  root.add(outline);
+  const outline = silhouetteOutline(guardian.outlineGeo, 0xff2a1a, 0.07);
+  top.add(outline);
   return { root, crystal, glow, top, rubble, crystalY, staff, outline };
 }

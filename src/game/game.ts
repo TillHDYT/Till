@@ -45,7 +45,7 @@ export class Game {
     this.world = new World(grid, opts, () => new BotBrain(opts.difficulty));
 
     const high = opts.quality === "high";
-    this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: "high-performance", stencil: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 2 : 1.25));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
