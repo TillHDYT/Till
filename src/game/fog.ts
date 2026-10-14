@@ -62,7 +62,7 @@ export class FogOfWar {
   }
 
   /** Hängt die Nebel-Abdunklung an ein Standard-Material. */
-  patch(mat: THREE.Material) {
+  patch(mat: THREE.Material, extra?: (shader: THREE.WebGLProgramParametersWithUniforms) => void, key = "") {
     const uniforms = this.uniforms;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uFogTex = uniforms.uFogTex;
@@ -89,7 +89,8 @@ export class FogOfWar {
           vec3 fogged = mix(fogGray, gl_FragColor.rgb, 0.45) * vec3(0.42, 0.46, 0.58);
           gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogged, gl_FragColor.rgb, fogV), uFogOn);`,
         );
+      extra?.(shader);
     };
-    mat.customProgramCacheKey = () => "fogpatch";
+    mat.customProgramCacheKey = () => `fogpatch${key}`;
   }
 }

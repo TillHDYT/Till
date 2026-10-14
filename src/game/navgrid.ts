@@ -296,7 +296,9 @@ export class NavGrid {
       return 1.1 + Math.min(d, 4) * 0.85 + fbm(x * 0.3, z * 0.3) * 1.1;
     }
     const r = this.river[i];
-    const b = this.base[i] >= 0 ? 0.12 : 0;
+    let b = this.base[i] >= 0 ? 0.12 : 0;
+    // Brunnenplattform ist leicht erhöht
+    for (const f of FOUNTAIN) if (Math.hypot(x + 0.5 - f.x, z + 0.5 - f.z) < 7.4) b = 0.42;
     const bump = (fbm(x * 0.12 + 50, z * 0.12) - 0.5) * 0.25 * (1 - this.lane[i]);
     return b + bump - r * 1.15;
   }
@@ -338,7 +340,7 @@ export class NavGrid {
 
   /** Bodenhöhe für Einheiten: im Fluss nicht unter die Wasseroberfläche sinken lassen. */
   groundAt(x: number, z: number) {
-    return Math.max(-0.55, Math.min(0.4, this.heightAt(x, z)));
+    return Math.max(-0.55, Math.min(0.5, this.heightAt(x, z)));
   }
 
   /** Sichtlinie / freie Strecke zwischen zwei Punkten (mit Mindestabstand zur Wand). */

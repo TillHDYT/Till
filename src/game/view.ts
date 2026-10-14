@@ -95,7 +95,8 @@ export class View {
     // Brunnen
     FOUNTAIN.forEach((f, i) => {
       const fo = buildFountain(i as 0 | 1);
-      fo.position.set(f.x, world.grid.groundAt(f.x, f.z), f.z);
+      fo.position.set(f.x, 0.12, f.z);
+      fo.rotation.y = Math.atan2(100 - f.x, 100 - f.z);
       scene.add(fo);
     });
 

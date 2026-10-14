@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { fbm, noise2, rng, type NavGrid } from "./navgrid";
+import grassUrl from "../assets/grass.jpg";
 
 export type Quality = "high" | "low";
 
@@ -266,6 +267,67 @@ function paintGround(grid: NavGrid, size: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** Maske für die Grastextur: R = Grasanteil, G = Helligkeit, B = grobes Rauschen. */
+function groundMask(grid: NavGrid, res: number) {
+  const n = grid.n;
+  const wallArr = new Float32Array(n * n);
+  const baseArr = new Float32Array(n * n);
+  const clearArr = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) {
+    wallArr[i] = grid.walk[i] ? 0 : 1;
+    baseArr[i] = grid.base[i] >= 0 ? 1 : 0;
+    clearArr[i] = Math.min(4, grid.walk[i] ? grid.clear[i] : 0);
+  }
+  const sLane = sampler(grid, grid.lane);
+  const sRiver = sampler(grid, grid.river);
+  const sWall = sampler(grid, wallArr);
+  const sBase = sampler(grid, baseArr);
+  const sClear = sampler(grid, clearArr);
+  const sDepth = sampler(grid, grid.wallDepth);
+  const data = new Uint8Array(res * res * 4);
+  const k = MAP / res;
+  for (let py = 0; py < res; py++) {
+    const z = (py + 0.5) * k;
+    for (let px = 0; px < res; px++) {
+      const x = (px + 0.5) * k;
+      const jit = (fbm(x * 0.35, z * 0.35) - 0.5) * 0.35;
+      const lane = sLane(x, z);
+      const river = sRiver(x, z);
+      const base = sBase(x, z);
+      const wall = sWall(x, z);
+      let grass = (1 - sstep(0.12, 0.55, lane + jit)) * (1 - sstep(0.0, 0.3, river + jit * 0.5)) * (1 - sstep(0.1, 0.5, base));
+      let shade = 0.72 + 0.28 * sstep(0, 2.5, sClear(x, z));
+      if (wall > 0.01) {
+        const depth = sDepth(x, z);
+        // an den Felskanten bleibt die gemalte Felsfarbe
+        grass *= 1 - wall * (1 - sstep(1.2, 2.6, depth + jit * 2));
+        shade = shade * (1 - wall) + 0.5 * wall;
+      }
+      shade *= 0.9 + fbm(x * 0.06 + 11, z * 0.06) * 0.2;
+      const o = (py * res + px) * 4;
+      data[o] = Math.round(Math.max(0, Math.min(1, grass)) * 255);
+      data[o + 1] = Math.round(Math.max(0, Math.min(1, shade)) * 255);
+      data[o + 2] = Math.round(fbm(x * 0.045 + 3, z * 0.045 + 9) * 255);
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Läd die gemalte Grastextur (kachelbar). */
+export function loadGrass(): THREE.Texture {
+  const t = new THREE.TextureLoader().load(grassUrl);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 function groundGeometry(grid: NavGrid) {
   const n = grid.n;
   const w = n + 1;
@@ -333,20 +395,20 @@ function treeGeometry(kind: number) {
   if (kind === 0) {
     // runder Laubbaum
     parts.push(colored(new THREE.CylinderGeometry(0.18, 0.3, 1.6, 5), 0x5a3f28, mat4(0, 0.8, 0)));
-    parts.push(colored(new THREE.IcosahedronGeometry(1.25, 0), 0x2a6036, mat4(0, 2.3, 0, 1, 0.85, 1)));
-    parts.push(colored(new THREE.IcosahedronGeometry(0.95, 0), 0x357544, mat4(0.55, 2.9, 0.2, 1, 0.85, 1, 0.3, 0.5)));
-    parts.push(colored(new THREE.IcosahedronGeometry(0.85, 0), 0x2a5e3a, mat4(-0.5, 2.7, -0.35, 1, 0.85, 1, 0.2, 1)));
+    parts.push(colored(new THREE.IcosahedronGeometry(1.25, 0), 0x24543a, mat4(0, 2.3, 0, 1, 0.85, 1)));
+    parts.push(colored(new THREE.IcosahedronGeometry(0.95, 0), 0x2e6a48, mat4(0.55, 2.9, 0.2, 1, 0.85, 1, 0.3, 0.5)));
+    parts.push(colored(new THREE.IcosahedronGeometry(0.85, 0), 0x22503a, mat4(-0.5, 2.7, -0.35, 1, 0.85, 1, 0.2, 1)));
   } else if (kind === 1) {
     // Nadelbaum
     parts.push(colored(new THREE.CylinderGeometry(0.15, 0.25, 1.2, 5), 0x4a3424, mat4(0, 0.6, 0)));
-    parts.push(colored(new THREE.ConeGeometry(1.25, 2.0, 7), 0x24563a, mat4(0, 1.9, 0)));
-    parts.push(colored(new THREE.ConeGeometry(0.95, 1.7, 7), 0x2c6845, mat4(0, 2.8, 0)));
-    parts.push(colored(new THREE.ConeGeometry(0.6, 1.3, 7), 0x347a50, mat4(0, 3.6, 0)));
+    parts.push(colored(new THREE.ConeGeometry(1.25, 2.0, 7), 0x1f4c38, mat4(0, 1.9, 0)));
+    parts.push(colored(new THREE.ConeGeometry(0.95, 1.7, 7), 0x275c42, mat4(0, 2.8, 0)));
+    parts.push(colored(new THREE.ConeGeometry(0.6, 1.3, 7), 0x2e6a4a, mat4(0, 3.6, 0)));
   } else {
     // große Krone für das Innere des Waldes
-    parts.push(colored(new THREE.IcosahedronGeometry(1.6, 0), 0x22502c, mat4(0, 1.9, 0, 1.1, 0.8, 1.1)));
-    parts.push(colored(new THREE.IcosahedronGeometry(1.2, 0), 0x2d6236, mat4(0.8, 2.5, 0.3, 1, 0.8, 1, 0.4, 0.3)));
-    parts.push(colored(new THREE.IcosahedronGeometry(1.1, 0), 0x1f4a30, mat4(-0.7, 2.3, -0.4, 1, 0.8, 1, 0.1, 1.2)));
+    parts.push(colored(new THREE.IcosahedronGeometry(1.6, 0), 0x1d4630, mat4(0, 1.9, 0, 1.1, 0.8, 1.1)));
+    parts.push(colored(new THREE.IcosahedronGeometry(1.2, 0), 0x26563a, mat4(0.8, 2.5, 0.3, 1, 0.8, 1, 0.4, 0.3)));
+    parts.push(colored(new THREE.IcosahedronGeometry(1.1, 0), 0x1a4030, mat4(-0.7, 2.3, -0.4, 1, 0.8, 1, 0.1, 1.2)));
   }
   return mergeGeometries(parts)!;
 }
@@ -369,7 +431,32 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   tex.anisotropy = 4;
   tex.generateMipmaps = true;
   const groundMat = new THREE.MeshLambertMaterial({ map: tex });
-  fog.patch(groundMat);
+  const grassUniforms = {
+    uGrass: { value: loadGrass() },
+    uGMask: { value: groundMask(grid, quality === "high" ? 512 : 320) },
+    uGrassScale: { value: 1 / 7.5 },
+    uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
+  };
+  fog.patch(
+    groundMat,
+    (shader) => {
+      Object.assign(shader.uniforms, grassUniforms);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uGrass;\nuniform sampler2D uGMask;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;")
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          vec4 gMask = texture2D(uGMask, vFogW.xz / ${MAP.toFixed(1)});
+          vec2 gp = vFogW.xz * uGrassScale;
+          vec3 g1 = texture2D(uGrass, gp).rgb;
+          vec2 rp = mat2(0.8, -0.6, 0.6, 0.8) * gp * 0.63 + vec2(0.37, 0.71);
+          vec3 g2 = texture2D(uGrass, rp).rgb;
+          vec3 grassCol = mix(g1, g2, smoothstep(0.38, 0.62, gMask.b)) * uGrassTint * gMask.g;
+          diffuseColor.rgb = mix(diffuseColor.rgb, grassCol, gMask.r);`,
+        );
+    },
+    "ground",
+  );
   const ground = new THREE.Mesh(groundGeometry(grid), groundMat);
   ground.receiveShadow = true;
   ground.name = "ground";
@@ -469,6 +556,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       if (grid.walk[i]) continue;
       const depth = grid.wallDepth[i];
       if (depth < 0.9) continue;
+      if (FOUNTAIN.some((f) => Math.hypot(f.x - x, f.z - z) < 13)) continue;
       let kind = rand() < 0.22 ? 1 : 0;
       if (depth > 6) {
         if (rand() < 0.55) continue;
@@ -477,7 +565,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       const h = grid.heightAt(x, z) - 0.2;
       const s = (kind === 2 ? 1.4 : 0.85) + rand() * 0.45;
       const m = mat4(x, h, z, s, s * (0.9 + rand() * 0.3), s, 0, rand() * Math.PI * 2, 0);
-      const tint = 0.78 + rand() * 0.35;
+      const tint = 0.72 + rand() * 0.28;
       tmpC.setRGB(tint * (0.95 + rand() * 0.1), tint, tint * (0.9 + rand() * 0.2));
       const ci = Math.min(CH - 1, Math.floor(x / chunkSize)) + Math.min(CH - 1, Math.floor(z / chunkSize)) * CH;
       buckets[kind][ci].push({ m, c: tmpC.clone() });
