@@ -1233,9 +1233,9 @@ export function buildTurret(team: 0 | 1): StructModel {
   staff.add(glow);
 
   // leuchtender Ring in Teamfarbe am Fuß der Figur
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.84, 0.05, 6, 48), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.72, 0.05, 6, 48), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
   ring.rotation.x = Math.PI / 2;
-  ring.position.y = 1.61;
+  ring.position.y = 1.57;
   top.add(ring);
 
   const C = { stone: 0x44484e, stoneL: 0x5c6168, armorD: 0x34373c, armor: 0x4a4e55 };

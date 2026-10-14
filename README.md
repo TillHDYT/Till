@@ -67,18 +67,16 @@ python3 assets-src/env_textures.py src/assets   # rock.jpg, pine.png, leaves.png
 
 ## 3D-Modell der Türme
 
-Die Wächterstatue der Türme ist ein echtes 3D-Modell (`src/assets/guardian.glb`, ca. 23.000 Dreiecke,
-mit Farb-, Normal- und Rauheit/Metall-Textur). Vorlage für Form und Farben ist das Konzeptbild
-`assets-src/guardian_reference.jpg`; das Bild selbst wird im Spiel nicht verwendet. Die Statue wird mit Blender erzeugt:
+Die Türme sind das Modell „Crimson Sentinel Statue“ (Meshy AI, GitHub-Release `turm-modell`, 43 MB,
+1,25 Mio. Dreiecke). `assets-src/sentinel.py` bereitet es für das Spiel auf: Sockelboden auf Höhe 0,
+Sockelradius 2,9 wie zuvor, roter Kristall als eigenes Teil (`Staff` → `Crystal`, leuchtet im Spiel in
+Teamfarbe), Statue auf ca. 36.000 Dreiecke reduziert, Texturen auf 2K/1K verkleinert (Ergebnis 1,9 MB).
+`assets-src/sentinel_blue.py` erzeugt daraus die blaue Team-Textur.
 
 ```bash
-pip install bpy            # Blender als Python-Modul (Python 3.13)
-python assets-src/guardian.py src/assets
-python3 -c "from PIL import Image; Image.open('src/assets/guardian_albedo_blue.png').convert('RGB').save('src/assets/guardian_blue.jpg', quality=86)"
+python assets-src/sentinel.py Crimson.Sentinel.Statue.glb build/turm     # Blender als Python-Modul (bpy)
+cp build/turm/guardian.glb src/assets/
+python3 assets-src/sentinel_blue.py src/assets/guardian.glb src/assets/guardian_blue.jpg
 ```
 
-Das Skript baut den Körper aus Gelenkketten (Skin-Modifier) in Standpose, legt die Rüstungsplatten
-eng an die Körperform an (Brustpanzer, Schulterlamellen, Plattenrock, Bein- und Armschienen, Topfhelm mit
-T-Visier), drapiert den Umhang per Stoffsimulation über Körper und Sockel und setzt den Stab mit Klauenkrone
-und Kristall in die rechte Hand. Danach reduziert es das High-Poly-Modell,
-wickelt die UVs ab und backt die Materialien vom High-Poly- auf das Low-Poly-Modell.
+Das frühere, per Skript gebaute Wächtermodell (`assets-src/guardian.py`) bleibt als Quelle erhalten.

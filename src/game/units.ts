@@ -309,7 +309,7 @@ export class Minion extends Unit {
 
 /** Lokale Lage des Turmkristalls relativ zum Turm (Blickrichtung +z). */
 /** Mitte des Turmkristalls im 3D-Modell (assets-src/guardian.py: CRYSTAL_CENTER). */
-export const TURRET_MUZZLE = { x: -1.75, y: 9.15, z: 0.55 };
+export const TURRET_MUZZLE = { x: -1.36, y: 7.58, z: 0.34 };
 
 export type TurretTier = "outer" | "inner" | "inhib" | "nexus";
 
