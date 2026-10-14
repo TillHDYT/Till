@@ -4,6 +4,8 @@ import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { fbm, noise2, rng, type NavGrid } from "./navgrid";
 import grassUrl from "../assets/grass.jpg";
+import pathUrl from "../assets/path.jpg";
+import stoneUrl from "../assets/stone.jpg";
 
 export type Quality = "high" | "low";
 
@@ -307,8 +309,10 @@ function groundMask(grid: NavGrid, res: number) {
       const o = (py * res + px) * 4;
       data[o] = Math.round(Math.max(0, Math.min(1, grass)) * 255);
       data[o + 1] = Math.round(Math.max(0, Math.min(1, shade)) * 255);
-      data[o + 2] = Math.round(fbm(x * 0.045 + 3, z * 0.045 + 9) * 255);
-      data[o + 3] = 255;
+      // B: Weg (Lane), A: Steinboden der Basis
+      const laneW = sstep(0.2, 0.6, lane + jit * 0.8) * (1 - sstep(0.1, 0.5, base)) * (1 - sstep(0.15, 0.5, river));
+      data[o + 2] = Math.round(laneW * (1 - wall) * 255);
+      data[o + 3] = Math.round(sstep(0.25, 0.6, base) * 255);
     }
   }
   const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -319,8 +323,8 @@ function groundMask(grid: NavGrid, res: number) {
 }
 
 /** Läd die gemalte Grastextur (kachelbar). */
-export function loadGrass(): THREE.Texture {
-  const t = new THREE.TextureLoader().load(grassUrl);
+export function loadGrass(url: string = grassUrl): THREE.Texture {
+  const t = new THREE.TextureLoader().load(url);
   t.wrapS = THREE.RepeatWrapping;
   t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
@@ -370,7 +374,7 @@ function groundGeometry(grid: NavGrid) {
 /** Fügt einer Geometrie eine einfarbige Vertex-Farbe hinzu. */
 export function colored(geo: THREE.BufferGeometry, color: number, m?: THREE.Matrix4) {
   const g = geo.index ? geo.toNonIndexed() : geo.clone();
-  g.deleteAttribute("uv");
+  if (!g.getAttribute("uv")) g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(g.getAttribute("position").count * 2), 2));
   if (m) g.applyMatrix4(m);
   const c = new THREE.Color(color);
   const n = g.getAttribute("position").count;
@@ -433,6 +437,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   const groundMat = new THREE.MeshLambertMaterial({ map: tex });
   const grassUniforms = {
     uGrass: { value: loadGrass() },
+    uPath: { value: loadGrass(pathUrl) },
+    uStone: { value: loadGrass(stoneUrl) },
     uGMask: { value: groundMask(grid, quality === "high" ? 512 : 320) },
     uGrassScale: { value: 1 / 7.5 },
     uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
@@ -442,7 +448,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     (shader) => {
       Object.assign(shader.uniforms, grassUniforms);
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nuniform sampler2D uGrass;\nuniform sampler2D uGMask;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;")
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uGrass;\nuniform sampler2D uPath;\nuniform sampler2D uStone;\nuniform sampler2D uGMask;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;")
         .replace(
           "#include <map_fragment>",
           `#include <map_fragment>
@@ -451,7 +457,18 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           vec3 g1 = texture2D(uGrass, gp).rgb;
           vec2 rp = mat2(0.8, -0.6, 0.6, 0.8) * gp * 0.63 + vec2(0.37, 0.71);
           vec3 g2 = texture2D(uGrass, rp).rgb;
-          vec3 grassCol = mix(g1, g2, smoothstep(0.38, 0.62, gMask.b)) * uGrassTint * gMask.g;
+          float macro = texture2D(uGrass, vFogW.xz * 0.011).g * 8.0;
+          vec3 grassCol = mix(g1, g2, smoothstep(0.35, 0.65, fract(macro))) * uGrassTint * gMask.g;
+          // Weg: Erde mit Steinplatten
+          vec2 pp = vFogW.xz / 15.0;
+          vec3 p1 = texture2D(uPath, pp).rgb;
+          vec3 p2 = texture2D(uPath, mat2(0.6, 0.8, -0.8, 0.6) * pp * 0.8 + 0.5).rgb;
+          vec3 pathCol = mix(p1, p2, 0.35) * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
+          // Basis: Steinplatten, leicht in Teamfarbe getönt
+          vec3 st = texture2D(uStone, vFogW.xz / 6.5).rgb;
+          vec3 stoneTint = vFogW.x < vFogW.z ? vec3(1.2, 1.32, 1.55) : vec3(1.55, 1.3, 1.25);
+          diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
+          diffuseColor.rgb = mix(diffuseColor.rgb, st * stoneTint, gMask.a);
           diffuseColor.rgb = mix(diffuseColor.rgb, grassCol, gMask.r);`,
         );
     },
@@ -679,6 +696,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           const x = a.x + ((b.x - a.x) * d) / len + nx * off;
           const z = a.z + ((b.z - a.z) * d) / len + nz * off;
           if (!grid.isOpen(x, z) || distToPolyline({ x, z }, LANES[id]) < LANE_WIDTH[id] / 2) continue;
+          if (grid.river[Math.floor(z) * grid.n + Math.floor(x)] > 0.05) continue;
           lamps.push(mat4(x, grid.groundAt(x, z), z));
           lampGlow.push(new THREE.Vector3(x, grid.groundAt(x, z) + 1.85, z));
         }
