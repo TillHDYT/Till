@@ -183,7 +183,7 @@ function start() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
   if (matchMedia("(pointer: coarse)").matches && document.fullscreenEnabled) {
     el.requestFullscreen?.().then(
-      () => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape").catch(() => {}),
+      () => (screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined)?.lock?.("landscape").catch(() => {}),
       () => {},
     );
   }
@@ -194,6 +194,7 @@ function start() {
     const stage = document.getElementById("stage")!;
     app.querySelector("#rot-ok")!.addEventListener("click", () => document.body.classList.add("rot-ok"));
     sfx.enabled = settings.sound;
+    try {
     game = new Game(stage, {
       playerChamp: settings.champ,
       playerRole: settings.role,
@@ -209,11 +210,34 @@ function start() {
       },
     });
     game.start();
+    } catch (err) {
+      const show = (window as unknown as { __bootError?: (m: string) => void }).__bootError;
+      const msg = `Fehler beim Starten der 3D-Szene: ${(err as Error)?.message ?? err}`;
+      if (show) show(msg);
+      else app.textContent = msg;
+      return;
+    }
     (window as unknown as { __game: Game }).__game = game;
   }, 60);
 }
 
-if (params.has("autoplay") || params.has("quick")) {
+(window as unknown as { __gameBooted: boolean }).__gameBooted = true;
+
+/** WebGL 2 wird für die 3D-Grafik gebraucht. */
+function hasWebGL2() {
+  try {
+    return !!document.createElement("canvas").getContext("webgl2");
+  } catch {
+    return false;
+  }
+}
+
+if (!hasWebGL2()) {
+  const show = (window as unknown as { __bootError?: (m: string) => void }).__bootError;
+  const msg = "Dieses Gerät oder dieser Browser unterstützt kein WebGL 2. Bitte iOS/Safari aktualisieren.";
+  if (show) show(msg);
+  else app.textContent = msg;
+} else if (params.has("autoplay") || params.has("quick")) {
   if (params.get("champ")) settings.champ = params.get("champ")!;
   if (params.get("role")) settings.role = params.get("role") as Role;
   if (params.get("q")) settings.quality = params.get("q") as Quality;
