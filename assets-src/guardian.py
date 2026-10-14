@@ -205,7 +205,7 @@ def build_material(name, kind):
     return m
 
 
-MAT_KINDS = ["steel", "gold", "cloth", "tabard", "stone", "dark", "leather", "inlay", "gem"]
+MAT_KINDS = ["steel", "gold", "cloth", "cape", "tabard", "stone", "dark", "leather", "inlay", "gem"]
 MATS = {k: build_material(k, k) for k in MAT_KINDS}
 
 
@@ -308,6 +308,23 @@ def setup_nodes(m, mode, team="red"):
         base = mix(noise.outputs["Fac"], tuple(c * 0.7 for c in cloth_col), cloth_col)
         col = mix(edge, base, tuple(min(1, c * 1.9 + 0.05) for c in cloth_col))
         rough, metal, bump_strength = 0.85, 0.0, 0.05
+    elif kind == "cape":
+        # Umhang: Samt in Teamfarbe mit goldener Stickerei an Saum und Seitenkanten (aus den UV-Koordinaten)
+        base = mix(noise.outputs["Fac"], tuple(c * 0.5 for c in cloth_col), tuple(c * 0.85 for c in cloth_col))
+        base = mix(edge, base, tuple(min(1, c * 1.35 + 0.02) for c in cloth_col))
+        uvc = N.new("ShaderNodeUVMap")
+        uvc.uv_map = "UVMap"
+        suv = N.new("ShaderNodeSeparateXYZ")
+        L.new(uvc.outputs["UV"], suv.inputs[0])
+        uu, vv = suv.outputs["X"], suv.outputs["Y"]
+        hem = ramp(vv, 0.026, 0.018)
+        line = math_("MULTIPLY", ramp(vv, 0.04, 0.044), ramp(vv, 0.052, 0.048))
+        sides = math_("ADD", ramp(uu, 0.014, 0.008), ramp(uu, 0.986, 0.992))
+        wave = math_("SINE", math_("ADD", math_("MULTIPLY", uu, 95.0, clamp=False), math_("MULTIPLY", math_("SINE", math_("MULTIPLY", vv, 70.0, clamp=False), clamp=False), 2.2, clamp=False), clamp=False), clamp=False)
+        swirl = math_("MULTIPLY", ramp(wave, 0.9, 0.98), math_("MULTIPLY", ramp(vv, 0.06, 0.066), ramp(vv, 0.11, 0.1)))
+        goldmask = math_("ADD", math_("ADD", hem, line), math_("ADD", sides, swirl))
+        col = mix(goldmask, base, (0.82, 0.56, 0.17))
+        rough, metal, bump_strength = 0.8, 0.0, 0.05
     elif kind == "tabard":
         img = N.new("ShaderNodeTexImage")
         img.image = BANNER_IMG if team == "red" else BANNER_BLUE_IMG
@@ -552,12 +569,14 @@ keep(prim("cylinder", "stone", "slab", vertices=40, radius=2.9, depth=0.42, loca
 smooth(stat_parts[-1], 0, bevel=0.05)
 clouds = bpy.data.textures.new("clouds", "CLOUDS")
 clouds.noise_scale = 0.35
+lower_blocks = []
 for i in range(14):
     a = i / 14 * math.tau + random.uniform(-0.03, 0.03)
     o = keep(prim("cube", "stone", f"blk{i}", size=1))
     o.scale = (1.05 * random.uniform(0.92, 1.05), 0.62, 0.66 * random.uniform(0.9, 1.08))
     o.location = (math.sin(a) * 2.42, -math.cos(a) * 2.42, 0.42 + o.scale.z / 2)
     o.rotation_euler = (random.uniform(-0.04, 0.04), random.uniform(-0.05, 0.05), a)
+    lower_blocks.append((i, a, 0.42 + o.scale.z, o.scale.x))
     mod(o, "BEVEL", width=0.07, segments=1)
     mod(o, "SUBSURF", levels=1)
     mod(o, "DISPLACE", texture=clouds, strength=0.07, mid_level=0.5)
@@ -574,19 +593,25 @@ keep(prim("cylinder", "stone", "topdisc", vertices=40, radius=1.82, depth=0.2, l
 smooth(stat_parts[-1], 0, bevel=0.04)
 
 # goldene Runenkappen auf jedem zweiten unteren Block, vorne ein großes Wappenschild mit Kristall
-for i in range(2, 14, 2):
-    a = i / 14 * math.tau
-    o = keep(prim("cube", "gold", f"rune{i}", size=1))
-    o.scale = (0.62, 0.07, 0.42)
-    o.location = (math.sin(a) * 2.76, -math.cos(a) * 2.76, 0.84)
-    o.rotation_euler = (0.12, 0, a)
-    mod(o, "BEVEL", width=0.035, segments=2)
-    mod(o, "SIMPLE_DEFORM", deform_method="BEND", angle=0.4, deform_axis="Z")
-    # eingeritzte Rune
+for i, a, top, wid in lower_blocks:
+    if i == 0:
+        continue
+    cap = keep(prim("cube", "gold", f"cap{i}", size=1))
+    cap.scale = (wid * 0.86, 0.5, 0.09)
+    cap.location = (math.sin(a) * 2.5, -math.cos(a) * 2.5, top + 0.03)
+    cap.rotation_euler = (0.1, 0, a)
+    mod(cap, "BEVEL", width=0.03, segments=2)
+    lip = keep(prim("cube", "gold", f"lip{i}", size=1))
+    lip.scale = (wid * 0.86, 0.07, 0.24)
+    lip.location = (math.sin(a) * 2.76, -math.cos(a) * 2.76, top - 0.07)
+    lip.rotation_euler = (0.08, 0, a)
+    mod(lip, "BEVEL", width=0.025, segments=2)
+    mod(lip, "SIMPLE_DEFORM", deform_method="BEND", angle=0.35, deform_axis="Z")
+    # eingravierte Rune auf der Vorderkante
     rn = keep(prim("cube", "dark", f"runeline{i}", size=1))
-    rn.scale = (0.06, 0.04, 0.24)
-    rn.location = (math.sin(a) * 2.815, -math.cos(a) * 2.815, 0.84)
-    rn.rotation_euler = (0.12, 0, a + 0.0)
+    rn.scale = (wid * 0.4, 0.04, 0.05)
+    rn.location = (math.sin(a) * 2.805, -math.cos(a) * 2.805, top - 0.07)
+    rn.rotation_euler = (0.08, 0, a + 0.0)
 shield_pts = [(-0.55, 0.62), (0.55, 0.62), (0.52, 0.05), (0.3, -0.4), (0, -0.68), (-0.3, -0.4), (-0.52, 0.05)]
 shield_pts = [(x * 1.25, z * 1.25) for x, z in shield_pts]
 keep(profile_extrude("shield", "gold", shield_pts, 0.16, (0, -2.84, 0.98), (0.1, 0, 0), bevel=0.04))
@@ -639,7 +664,7 @@ colliders.append(breast)
 for i, (z0, z1, off) in enumerate(((4.3, 4.52, 0.05), (4.47, 4.7, 0.065), (4.64, 4.92, 0.075))):
     colliders.append(keep(band(f"lame{i}", torso, TA, TB, tz(z0), tz(z1), off, thick=0.05, trim="gold" if i == 0 else None, trim_depth=0.028)))
 colliders.append(keep(band("belt", torso, TA, TB, tz(4.06), tz(4.34), 0.13, thick=0.08, mat="gold", trim="leather", trim_depth=0.03)))
-keep(band("gorget", torso, TA, TB, tz(6.08), tz(6.32), 0.09, thick=0.06, flare=0.03, trim_depth=0.035))
+keep(band("gorget", torso, TA, TB, tz(6.08), tz(6.32), 0.09, thick=0.06, mat="gold", trim="steel", flare=0.03, trim_depth=0.03))
 
 # Beintaschen: Plattenrock unter dem Gürtel, vorne offen für den Wappenrock
 def skirt_plate(name, a0, a1, mat="steel"):
@@ -706,7 +731,7 @@ for sd in (1, -1):
     hip, knee, ank = map(Vector, LEG[sd])
     colliders.append(keep(band(f"cuisse{sd}", legs[sd], hip, knee, 0.38, 0.86, 0.06, rmax=0.6, shape=shin_ridge(hip, knee), trim_depth=0.05)))
     kd = bend_dir(hip, knee, ank, (0, -1, 0))
-    keep(shell(f"poleyn{sd}", "steel", 0.3, knee + kd * 0.1, scale=(1.0, 0.8, 1.3), rot=kd.to_track_quat("Z", "Y").to_euler(), zmin=0.0, zmax=1, thick=0.05, seg=10, rings=6, trim="gold"))
+    keep(shell(f"poleyn{sd}", "gold", 0.3, knee + kd * 0.1, scale=(1.0, 0.8, 1.3), rot=kd.to_track_quat("Z", "Y").to_euler(), zmin=0.0, zmax=1, thick=0.05, seg=10, rings=6, trim="steel"))
     keep(profile_extrude(f"kplate{sd}", "gold", [(0, 0.34), (0.16, 0.08), (0.12, -0.16), (0, -0.3), (-0.12, -0.16), (-0.16, 0.08)], 0.06, knee + kd * 0.4, (0, 0, math.atan2(kd.x, -kd.y)), bevel=0.02))
     sp = keep(prim("cone", "gold", f"kspike{sd}", vertices=8, radius1=0.09, radius2=0, depth=0.32))
     sp.location = knee + kd * 0.48
@@ -728,7 +753,7 @@ for sd in (1, -1):
 for sd in (1, -1):
     sho = Vector(ARM[sd][0])
     c = sho + Vector((0.04 * sd, 0.02, 0.2))
-    pa = keep(shell(f"pauldA{sd}", "steel", 0.56, c, scale=(1.05, 1.05, 0.88), rot=(0, -0.4 * sd, 0), zmin=-0.05, zmax=1, thick=0.08, seg=8, rings=5, trim="gold", trim_depth=0.075))
+    pa = keep(shell(f"pauldA{sd}", "gold", 0.56, c, scale=(1.05, 1.05, 0.88), rot=(0, -0.4 * sd, 0), zmin=-0.05, zmax=1, thick=0.08, seg=8, rings=5, trim="steel", trim_depth=0.06))
     # Schulterlamellen: folgen dem Oberarm, nur außen, die obere überdeckt die untere
     elb = Vector(ARM[sd][1])
     for k, (t0, t1, off) in enumerate(((0.0, 0.3, 0.26), (0.2, 0.46, 0.22), (0.36, 0.6, 0.18))):
@@ -804,7 +829,7 @@ keep(tab)
 
 # ---------------------------------------------------------------- Umhang: Stoffsimulation über Körper und Rüstung
 
-bpy.ops.mesh.primitive_grid_add(x_subdivisions=26, y_subdivisions=34, size=1)
+bpy.ops.mesh.primitive_grid_add(x_subdivisions=30, y_subdivisions=40, size=1)
 cape = bpy.context.active_object
 cape.name = "cape"
 pin_idx = []
@@ -813,9 +838,12 @@ for v in cape.data.vertices:
     x, y = v.co.x, v.co.y
     t = 0.5 - y
     # Ruhelage: flaches, breites Tuch. Startlage: oben an den Schultern zusammengerafft -> Falten entstehen beim Fallen
-    pleat = (0.04 + 0.2 * t) * math.sin(x * math.tau * 4.5 + 0.7) + (0.02 + 0.07 * t) * math.sin(x * math.tau * 9.3 + 2.1)
+    pleat = (0.05 + 0.24 * t) * math.sin(x * math.tau * 5.0 + 0.7) + (0.02 + 0.08 * t) * math.sin(x * math.tau * 10.3 + 2.1)
     side = max(0.0, x) * 2
-    co = Vector((x * (2.0 + 1.5 * t) + 0.25 * t * t + 0.5 * side * t * t, 0.82 - 0.3 * (2 * x) ** 2 + 0.42 * t + pleat, 6.15 - t * 4.35))
+    # senkrecht bis knapp über den Sockel, das letzte Stück liegt nach hinten und fällt über die Sockelkante
+    drop = min(1.0, t / 0.85)
+    tail = max(0.0, t - 0.85)
+    co = Vector((x * (2.1 + 2.3 * t) + 0.3 * t * t + 0.7 * side * t * t, 0.84 - 0.32 * (2 * x) ** 2 + 0.55 * drop + tail * 5.0 + pleat, 6.15 - drop * 4.35))
     rest_co.append(co.copy())
     v.co = co
     if t < 0.03:
@@ -828,7 +856,7 @@ rk.value = 0.0
 init_co = [v.co.copy() for v in cape.data.vertices]
 vg = cape.vertex_groups.new(name="pin")
 vg.add(pin_idx, 1.0, "REPLACE")
-cape.data.materials.append(MATS["cloth"])
+cape.data.materials.append(MATS["cape"])
 for p in cape.data.polygons:
     p.use_smooth = True
 
