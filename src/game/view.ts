@@ -405,7 +405,8 @@ export class View {
       if (s.kind === "turret") {
         // Aufleuchten beim Schuss, Rückstoß des Stabs
         const flash = atk;
-        m.crystal.scale.set(0.85 * (1 + flash * 0.45), 1.75 * (1 + flash * 0.3), 0.85 * (1 + flash * 0.45));
+        const cs = (m.crystal.userData.base ??= m.crystal.scale.clone()) as THREE.Vector3;
+        m.crystal.scale.set(cs.x * (1 + flash * 0.45), cs.y * (1 + flash * 0.3), cs.z * (1 + flash * 0.45));
         m.glow.scale.setScalar(3.6 * (1 + flash * 1.3) * (s.target ? 1 + Math.sin(this.time * 9) * 0.08 : 1));
         (m.glow.material as THREE.SpriteMaterial).opacity = s.invulnerable ? 0.55 : 0.85;
         if (m.staff) m.staff.rotation.x = -0.14 * Math.sin(flash * Math.PI);

@@ -412,10 +412,6 @@ export type StructModel = {
   shards?: THREE.Object3D;
 };
 
-function crystalMat(team: 0 | 1) {
-  return new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] });
-}
-
 /** Facettierter, leuchtender Edelstein. */
 function gemMat(team: 0 | 1, opacity = 1) {
   return new THREE.MeshPhongMaterial({
@@ -458,6 +454,10 @@ function outlineMesh(geo: THREE.BufferGeometry, color: number, width: number) {
 const Cyl = (rt: number, rb: number, h: number, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, seg);
 const Box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
 
+/** Größe der Wächterstatue relativ zum Sockel. */
+export const TURRET_STATUE_SCALE = 1.35;
+
+/** Turm: humanoide Wächterstatue auf rundem Sockel (Entwurf aus der überarbeiteten Version). */
 export function buildTurret(team: 0 | 1): StructModel {
   const root = new THREE.Group();
   const C = {
@@ -474,152 +474,120 @@ export function buildTurret(team: 0 | 1): StructModel {
   };
   const mat = statueMat();
 
-  // Sockel: zwei Lagen grober Steinblöcke
-  const baseParts: THREE.BufferGeometry[] = [colored(Cyl(2.7, 2.95, 0.45, 22), C.stoneD, mat4(0, 0.22, 0))];
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    baseParts.push(colored(Box(1.32, 0.62, 0.62), i % 2 ? C.stone : C.stoneL, trs(Math.sin(a) * 2.45, 0.72, Math.cos(a) * 2.45, a, 0, 1, 1, 1, ((i % 3) - 1) * 0.04)));
+  // Sockel mit Goldkante
+  const baseParts: THREE.BufferGeometry[] = [colored(Cyl(2.65, 2.9, 0.42, 24), C.stoneD, mat4(0, 0.22, 0))];
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * Math.PI * 2;
+    baseParts.push(colored(Box(1.05, 0.34, 0.62), k % 2 ? C.stone : C.stoneL, trs(Math.sin(a) * 2.35, 0.52, Math.cos(a) * 2.35, a, 0, 1, 1, 1, ((k % 3) - 1) * 0.035)));
+    baseParts.push(colored(Box(0.82, 0.13, 0.54), C.goldD, trs(Math.sin(a) * 2.34, 0.73, Math.cos(a) * 2.34, a)));
   }
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + 0.3;
-    baseParts.push(colored(Box(1.25, 0.5, 0.6), i % 2 ? C.stoneL : C.stone, trs(Math.sin(a) * 2.0, 1.28, Math.cos(a) * 2.0, a)));
-  }
-  baseParts.push(colored(Cyl(1.85, 1.9, 0.2, 20), C.stoneD, mat4(0, 1.5, 0)));
+  baseParts.push(colored(Cyl(1.72, 1.95, 0.22, 18), C.stoneD, mat4(0, 1.22, 0)));
   const baseGeo = merge(baseParts);
-  const base = new THREE.Mesh(baseGeo, mat);
-  base.castShadow = true;
-  base.receiveShadow = true;
-  root.add(base);
+  const baseMesh = new THREE.Mesh(baseGeo, mat);
+  baseMesh.castShadow = true;
+  baseMesh.receiveShadow = true;
+  root.add(baseMesh);
 
   const top = new THREE.Group();
+  top.scale.setScalar(TURRET_STATUE_SCALE);
   root.add(top);
-  // leuchtender Ring um den Fuß der Statue
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.72, 0.08, 6, 48), crystalMat(team));
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 1.72;
-  top.add(ring);
-
-  const body: THREE.BufferGeometry[] = [];
-  // Unterkörper: langer Steinmantel mit Faltenplatten
-  body.push(colored(Cyl(1.32, 1.68, 2.6, 14), C.armorD, mat4(0, 2.9, 0)));
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.2;
-    body.push(colored(Box(0.62, 2.4, 0.18), i % 2 ? C.armor : C.stone, trs(Math.sin(a) * 1.52, 2.85, Math.cos(a) * 1.52, a, -0.05)));
+  const parts: THREE.BufferGeometry[] = [];
+  // Stiefel und Beinschienen: getrennte Füße und Schienbeine machen die Figur aus Spielentfernung lesbar
+  for (const side of [-1, 1]) {
+    parts.push(colored(Box(0.62, 0.42, 0.82), C.armorD, trs(0.43 * side, 0.98, 0.34, 0, 0, 1, 1, 1, 0.08 * side)));
+    parts.push(colored(Box(0.48, 0.86, 0.52), C.armor, trs(0.43 * side, 1.55, 0.23, 0, 0, 1, 1, 1, 0.06 * side)));
+    parts.push(colored(Box(0.5, 0.12, 0.57), C.goldD, trs(0.43 * side, 1.22, 0.52, 0, 0, 1, 1, 1, 0.06 * side)));
+    parts.push(colored(Box(0.16, 0.58, 0.09), C.gold, trs(0.43 * side, 1.62, 0.51, 0, 0, 1, 1, 1, 0.06 * side)));
+    parts.push(colored(Box(0.54, 0.2, 0.72), C.stoneL, trs(0.43 * side, 0.76, 0.31, 0, 0, 1, 1, 1, 0.05 * side)));
   }
-  body.push(colored(new THREE.TorusGeometry(1.4, 0.14, 6, 26), C.gold, mat4(0, 4.15, 0, 1, 1, 1, Math.PI / 2)));
-  // Rumpf
-  body.push(colored(Cyl(1.62, 1.38, 1.7, 14), C.armor, mat4(0, 5.0, 0)));
-  body.push(colored(new THREE.TorusGeometry(1.6, 0.11, 6, 26), C.gold, mat4(0, 5.82, 0, 1, 1, 1, Math.PI / 2)));
-  // goldener Stern auf der Brust
-  body.push(colored(new THREE.OctahedronGeometry(0.75, 0), C.gold, mat4(0, 5.05, 1.38, 1.0, 1.25, 0.32)));
-  body.push(colored(Box(1.7, 0.22, 0.25), C.gold, mat4(0, 5.05, 1.42)));
-  body.push(colored(Box(0.22, 1.9, 0.25), C.goldD, mat4(0, 5.05, 1.4)));
-  // kantige Schulterpanzer (keine Kugeln)
-  for (const sd of [-1, 1]) {
-    body.push(colored(new THREE.DodecahedronGeometry(1.0, 0), C.armor, mat4(1.65 * sd, 5.75, 0, 1.25, 0.82, 1.15, 0.2, 0.3 * sd, 0)));
-    body.push(colored(new THREE.DodecahedronGeometry(0.72, 0), C.stoneL, mat4(1.95 * sd, 6.2, -0.1, 1.1, 0.7, 1.05, 0.5, 0.2, 0)));
-    body.push(colored(Box(1.9, 0.18, 0.3), C.gold, trs(1.7 * sd, 5.25, 0.85, 0, 0, 1, 1, 1, 0.18 * sd)));
-    body.push(colored(Box(0.22, 1.0, 0.24), C.gold, trs(2.45 * sd, 5.6, 0.4, 0.5 * sd, 0, 1, 1, 1, -0.3 * sd)));
-    body.push(colored(new THREE.ConeGeometry(0.2, 0.9, 4), C.goldD, mat4(2.2 * sd, 6.65, -0.2, 1, 1, 1, 0, 0, -0.7 * sd)));
+  // Hüfte, Rumpf und mehrlagiger Brustpanzer
+  parts.push(colored(Cyl(0.72, 0.92, 1.05, 8), C.armorD, mat4(0, 2.25, 0)));
+  parts.push(colored(Box(1.26, 0.5, 0.76), C.armorD, mat4(0, 2.58, 0.03)));
+  parts.push(colored(Box(1.36, 1.18, 0.38), C.armor, mat4(0, 3.22, 0.39)));
+  parts.push(colored(Box(1.08, 0.82, 0.16), C.armorD, mat4(0, 3.28, 0.61)));
+  parts.push(colored(Box(0.86, 0.57, 0.13), C.stoneL, mat4(0, 3.36, 0.72)));
+  parts.push(colored(Box(0.18, 0.72, 0.1), C.gold, trs(0, 3.28, 0.82, 0, 0, 1, 1, 1, -0.16)));
+  parts.push(colored(Box(0.18, 0.72, 0.1), C.gold, trs(0, 3.28, 0.82, 0, 0, 1, 1, 1, 0.16)));
+  parts.push(colored(new THREE.ConeGeometry(0.19, 0.38, 5), C.gold, mat4(0, 3.65, 0.83)));
+  parts.push(colored(Box(0.76, 0.12, 0.14), C.goldD, mat4(0, 2.88, 0.72)));
+  // Kantige Schulterpanzer und gegliederte Arme
+  for (const side of [-1, 1]) {
+    parts.push(colored(Box(0.9, 0.55, 0.72), C.armorD, trs(0.98 * side, 3.72, 0.03, 0, 0, 1, 1, 1, 0.16 * side)));
+    parts.push(colored(Box(0.76, 0.38, 0.65), C.stoneL, trs(0.99 * side, 3.82, 0.13, 0, 0, 1, 1, 1, 0.16 * side)));
+    parts.push(colored(Box(0.64, 0.12, 0.69), C.goldD, trs(0.99 * side, 4.04, 0.14, 0, 0, 1, 1, 1, 0.16 * side)));
+    parts.push(colored(Box(0.19, 0.72, 0.2), C.gold, trs(1.03 * side, 3.75, 0.51, 0, 0, 1, 1, 1, 0.2 * side)));
+    parts.push(colored(Cyl(0.22, 0.28, 1.02, 7), C.armorD, trs(1.18 * side, 3.15, 0.12, 0, 0, 1, 1, 1, 0.12 * side)));
+    parts.push(colored(Box(0.42, 0.34, 0.42), C.armor, trs(1.23 * side, 2.66, 0.25, 0, 0, 1, 1, 1, 0.08 * side)));
+    parts.push(colored(Box(0.32, 0.18, 0.35), C.goldD, trs(1.23 * side, 2.47, 0.28, 0, 0, 1, 1, 1, 0.08 * side)));
   }
-  // Kapuze mit goldener Gesichtsplatte
-  body.push(colored(new THREE.DodecahedronGeometry(0.98, 0), C.armorD, mat4(0, 6.85, -0.12, 1.0, 1.2, 1.05)));
-  body.push(colored(new THREE.ConeGeometry(0.62, 1.0, 6), C.armorD, mat4(0, 7.7, -0.42, 1, 1, 1, -0.5)));
-  body.push(colored(new THREE.SphereGeometry(0.58, 10, 8), C.dark, mat4(0, 6.68, 0.46, 0.85, 1.05, 0.7)));
-  body.push(colored(Box(0.38, 1.35, 0.26), C.gold, trs(0, 6.95, 0.82, 0, 0.18)));
-  body.push(colored(Box(1.15, 0.22, 0.3), C.gold, trs(0, 7.15, 0.72, 0, 0.3)));
-  for (const sd of [-1, 1]) body.push(colored(Box(0.2, 0.85, 0.24), C.gold, trs(0.5 * sd, 6.55, 0.62, 0.5 * sd, 0, 1, 1, 1, 0.25 * sd)));
-  body.push(colored(new THREE.ConeGeometry(0.2, 0.7, 4), C.gold, mat4(0, 7.62, 0.66, 1, 1, 1, 0.35)));
-  // linker Arm hinter dem Schild
-  body.push(colored(Cyl(0.38, 0.33, 1.6, 8), C.armor, trs(1.9, 4.8, 0.45, 0, 0.55)));
-
-  // Schild: Steinfläche mit Goldrahmen
-  const SH = trs(0.95, 3.35, 1.95, -0.3, 0.08);
-  const sh = (m: THREE.Matrix4) => SH.clone().multiply(m);
-  body.push(colored(Box(1.95, 2.9, 0.34), C.stone, sh(trs(0, 0.4, 0))));
-  body.push(colored(Box(1.38, 1.38, 0.34), C.stone, sh(trs(0, -1.05, 0, 0, 0, 1, 1, 1, Math.PI / 4))));
-  body.push(colored(Box(2.12, 0.22, 0.42), C.gold, sh(trs(0, 1.88, 0))));
-  for (const sd of [-1, 1]) {
-    body.push(colored(Box(0.22, 2.9, 0.42), C.gold, sh(trs(1.0 * sd, 0.4, 0))));
-    body.push(colored(Box(1.45, 0.2, 0.42), C.gold, sh(trs(0.5 * sd, -1.6, 0, 0, 0, 1, 1, 1, (Math.PI / 4) * sd))));
-  }
-  body.push(colored(Box(0.26, 3.2, 0.3), C.goldD, sh(trs(0, 0.0, 0.14))));
-  body.push(colored(new THREE.OctahedronGeometry(0.62, 0), C.gold, sh(trs(0, 0.75, 0.2, 0, 0, 0.85, 1.4, 0.3))));
-  // Gold-Ornamente vorne am Sockel
-  body.push(colored(Box(0.55, 0.9, 0.3), C.gold, trs(-0.9, 1.95, 1.5, -0.5)));
-  body.push(colored(Box(0.55, 0.9, 0.3), C.gold, trs(0.6, 1.95, 1.6, 0.3)));
-
-  const bodyGeo = merge(body);
+  // Hals, Helm mit Sehschlitz und Kronenkamm
+  parts.push(colored(Cyl(0.32, 0.38, 0.38, 8), C.goldD, mat4(0, 4.02, 0.02)));
+  parts.push(colored(new THREE.ConeGeometry(0.56, 0.84, 6), C.armorD, mat4(0, 4.58, 0.02)));
+  parts.push(colored(Box(0.65, 0.43, 0.47), C.armor, mat4(0, 4.43, 0.27)));
+  parts.push(colored(Box(0.43, 0.24, 0.08), C.dark, mat4(0, 4.55, 0.515)));
+  parts.push(colored(Box(0.37, 0.055, 0.045), C.goldD, mat4(0, 4.65, 0.565)));
+  parts.push(colored(new THREE.ConeGeometry(0.27, 0.48, 5), C.gold, mat4(0, 4.95, 0.05)));
+  parts.push(colored(Box(0.12, 0.48, 0.12), C.goldD, mat4(0, 4.87, 0.34)));
+  // Breiter Umhang hinter dem Körper (Teamfarbe)
+  parts.push(colored(Box(1.48, 2.62, 0.14), C.dark, mat4(0, 2.86, -0.48, 1, 1, 1, 0.08)));
+  parts.push(colored(Box(1.25, 2.28, 0.1), team === 0 ? 0x18304b : 0x541c2c, mat4(0, 2.92, -0.575, 1, 1, 1, 0.08)));
+  parts.push(colored(Box(1.12, 0.22, 0.12), C.goldD, mat4(0, 4.12, -0.55)));
+  for (const side of [-1, 1]) parts.push(colored(Box(0.18, 1.95, 0.08), C.goldD, trs(0.48 * side, 2.8, -0.64, 0, 0, 1, 1, 1, 0.1 * side)));
+  const bodyGeo = merge(parts);
   const bodyMesh = new THREE.Mesh(bodyGeo, mat);
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   top.add(bodyMesh);
 
-  // leuchtende Kristall-Einlagen
+  // Stab und Kristall als eigene Gruppe (Rückstoß-Animation)
+  const staff = new THREE.Group();
+  staff.position.set(-1.62, 3.95, 0.15);
+  staff.rotation.z = -0.08;
+  top.add(staff);
+  const staffParts = [
+    colored(Cyl(0.09, 0.12, 2.75, 8), C.pole, mat4(0, 1.12, 0)),
+    colored(Cyl(0.18, 0.2, 0.22, 8), C.gold, mat4(0, 0.16, 0)),
+    colored(new THREE.TorusGeometry(0.29, 0.07, 6, 16), C.gold, mat4(0, 2.32, 0, 1, 1, 1, Math.PI / 2)),
+    colored(Cyl(0.3, 0.14, 0.36, 8), C.goldD, mat4(0, 2.48, 0)),
+  ];
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    staffParts.push(colored(new THREE.ConeGeometry(0.055, 0.6, 4), C.gold, trs(Math.sin(a) * 0.26, 2.83, Math.cos(a) * 0.26, a, 0.18)));
+  }
+  const staffMesh = new THREE.Mesh(merge(staffParts), mat);
+  staffMesh.castShadow = true;
+  staff.add(staffMesh);
+  const crystalY = 2.98;
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.48, 0), gemMat(team));
+  crystal.scale.set(0.82, 1.55, 0.82);
+  crystal.position.set(0, crystalY, 0.02);
+  staff.add(crystal);
+  const glow = glowSprite(TEAM_GLOW[team], 3.5, 0.85);
+  glow.position.copy(crystal.position);
+  staff.add(glow);
+
+  // Kristall-Einlagen in Brust und Schultern
   const inlay = new THREE.Mesh(
     merge([
-      colored(new THREE.OctahedronGeometry(0.5, 0), C.inlay, sh(trs(0, 0.75, 0.32, 0, 0, 0.6, 1.1, 0.25))),
-      colored(new THREE.OctahedronGeometry(0.3, 0), C.inlay, mat4(0, 5.05, 1.62, 0.9, 1.3, 0.4)),
-      colored(new THREE.OctahedronGeometry(0.22, 0), C.inlay, mat4(-2.42, 5.65, 0.52, 0.6, 1.2, 0.5)),
-      colored(new THREE.OctahedronGeometry(0.22, 0), C.inlay, mat4(2.42, 5.65, 0.52, 0.6, 1.2, 0.5)),
-      colored(new THREE.OctahedronGeometry(0.2, 0), C.inlay, trs(-0.9, 1.95, 1.68, -0.5, 0, 0.7, 1.2, 0.4)),
-      colored(new THREE.OctahedronGeometry(0.2, 0), C.inlay, trs(0.6, 1.95, 1.78, 0.3, 0, 0.7, 1.2, 0.4)),
+      colored(new THREE.OctahedronGeometry(0.16, 0), C.inlay, mat4(0, 3.37, 0.84, 0.8, 1.5, 0.35)),
+      colored(new THREE.OctahedronGeometry(0.12, 0), C.inlay, mat4(-1.04, 3.82, 0.52, 0.7, 1.2, 0.35)),
+      colored(new THREE.OctahedronGeometry(0.12, 0), C.inlay, mat4(1.04, 3.82, 0.52, 0.7, 1.2, 0.35)),
     ]),
     inlayMat,
   );
   top.add(inlay);
 
-  // Fahnenbanner auf dem Rücken
-  const banner = bannerMesh(team, 2.1, 4.9);
-  banner.position.set(0.25, 3.95, -1.62);
-  banner.rotation.set(-0.08, Math.PI, 0);
-  top.add(banner);
-
-  // Stab mit großem Kristall (rechte Hand)
-  const staff = new THREE.Group();
-  staff.position.set(-1.6, 5.2, 0);
-  top.add(staff);
-  const staffMesh = new THREE.Mesh(
-    merge([
-      colored(Cyl(0.38, 0.32, 1.6, 8), C.armor, trs(-0.08, -0.35, 0.28, 0, 0.45)),
-      colored(new THREE.DodecahedronGeometry(0.36, 0), C.armorD, mat4(-0.15, -1.0, 0.55)),
-      colored(Cyl(0.12, 0.12, 6.9, 6), C.pole, mat4(-0.15, -0.2, 0.55)),
-      ...[-2.6, -0.6, 1.4].map((y) => colored(Cyl(0.18, 0.18, 0.22, 8), C.gold, mat4(-0.15, y, 0.55))),
-      colored(new THREE.TorusGeometry(0.24, 0.08, 6, 14), C.gold, mat4(-0.15, 2.85, 0.55, 1, 1, 1, Math.PI / 2)),
-      colored(Cyl(0.42, 0.14, 0.6, 8), C.gold, mat4(-0.15, 3.15, 0.55)),
-      ...[0, 1, 2, 3].map((i) => {
-        const a = (i / 4) * Math.PI * 2;
-        return colored(new THREE.ConeGeometry(0.08, 0.8, 4), C.gold, trs(-0.15 + Math.sin(a) * 0.36, 3.55, 0.55 + Math.cos(a) * 0.36, a, 0.35));
-      }),
-    ]),
-    mat,
-  );
-  staffMesh.castShadow = true;
-  staff.add(staffMesh);
-  const crystalY = 3.95;
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), gemMat(team));
-  crystal.scale.set(0.85, 1.9, 0.85);
-  crystal.position.set(-0.15, crystalY, 0.55);
-  staff.add(crystal);
-  const glow = glowSprite(TEAM_GLOW[team], 3.8, 0.85);
-  glow.position.copy(crystal.position);
-  staff.add(glow);
-
-  const rubble = new THREE.Mesh(
-    merge([
-      colored(Cyl(1.35, 1.65, 1.3, 12), C.armorD, mat4(0, 2.2, 0)),
-      colored(new THREE.DodecahedronGeometry(0.8, 0), C.armor, mat4(1.5, 1.9, 0.9, 1, 0.7, 1, 0.4, 0.2)),
-      colored(new THREE.DodecahedronGeometry(0.6, 0), C.stoneL, mat4(-1.3, 1.8, -0.8, 1, 0.8, 1, 0.1, 1.1)),
-      colored(Box(1.7, 0.3, 2.0), C.gold, trs(1.6, 1.7, -1.4, 0.6, 0.15)),
-      colored(new THREE.OctahedronGeometry(0.4, 0), 0x3a3238, mat4(-1.7, 1.75, 1.1, 0.8, 1.6, 0.8, 1.2, 0, 0.4)),
-    ]),
-    mat,
-  );
+  const rubbleParts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    rubbleParts.push(colored(Box(0.5, 0.25, 0.42), C.stone, trs(Math.sin(a) * 2.1, 0.28, Math.cos(a) * 2.1, a)));
+  }
+  const rubble = new THREE.Mesh(merge(rubbleParts), mat);
   rubble.visible = false;
-  rubble.castShadow = true;
   root.add(rubble);
 
-  const outline = outlineMesh(merge([baseGeo.clone(), bodyGeo.clone()]), 0xff2a1a, 0.09);
+  const scaledBody = bodyGeo.clone().applyMatrix4(new THREE.Matrix4().makeScale(TURRET_STATUE_SCALE, TURRET_STATUE_SCALE, TURRET_STATUE_SCALE));
+  const outline = outlineMesh(merge([baseGeo.clone(), scaledBody]), 0xff2a1a, 0.09);
   root.add(outline);
   return { root, crystal, glow, top, rubble, crystalY, staff, outline };
 }

@@ -308,7 +308,8 @@ export class Minion extends Unit {
 }
 
 /** Lokale Lage des Turmkristalls relativ zum Turm (Blickrichtung +z). */
-export const TURRET_MUZZLE = { x: -1.75, y: 9.15, z: 0.55 };
+/** Stabgruppe (-1.62, 3.95, 0.15), um -0.08 rad gekippt, Kristall bei y 2.98, Statue 1.35-fach skaliert. */
+export const TURRET_MUZZLE = { x: (-1.62 + 2.98 * Math.sin(0.08)) * 1.35, y: (3.95 + 2.98 * Math.cos(0.08)) * 1.35, z: (0.15 + 0.02) * 1.35 };
 
 export type TurretTier = "outer" | "inner" | "inhib" | "nexus";
 
@@ -335,7 +336,7 @@ export class Structure extends Unit {
     super(kind, team, pos.x, pos.z, r, base);
     this.lane = lane;
     this.tier = tier;
-    this.height = kind === "turret" ? 10.4 : kind === "inhib" ? 5.6 : 7.5;
+    this.height = kind === "turret" ? 9.9 : kind === "inhib" ? 5.6 : 7.5;
   }
 }
 
