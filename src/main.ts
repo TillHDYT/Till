@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { Sfx } from "./game/audio";
 import { CHAMPIONS, ROLE_NAMES, type Role } from "./game/champions";
 import { Game, navGrid } from "./game/game";
-import { buildChampion, loadGuardian } from "./game/models";
+import { buildChampion, loadGuardian, loadNexus } from "./game/models";
 import type { Quality } from "./game/terrain";
 import type { Difficulty } from "./game/world";
 
@@ -187,8 +187,8 @@ function start() {
       () => {},
     );
   }
-  // Erst das 3D-Modell der Türme laden, dann die Szene aufbauen
-  const ready = loadGuardian();
+  // Erst die 3D-Modelle (Türme, Nexus) laden, dann die Szene aufbauen
+  const ready = Promise.all([loadGuardian(), loadNexus()]);
   setTimeout(async () => {
     await ready;
     navGrid();

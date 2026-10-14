@@ -10,6 +10,7 @@ import bannerBlueUrl from "../assets/banner_blue.png";
 import emblemUrl from "../assets/emblem.jpg";
 import guardianUrl from "../assets/guardian.glb";
 import guardianBlueUrl from "../assets/guardian_blue.jpg";
+import nexusUrl from "../assets/nexus.glb";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
@@ -834,7 +835,68 @@ export function buildBrazier() {
   return { root, fireY: 2.5, glow: g, flame };
 }
 
+// ---------------- Nexus aus dem 3D-Modell (assets-src/nexus.py -> nexus.glb) ----------------
+
+type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry };
+let nexusAsset: NexusAsset | null = null;
+
+/** Lädt das Nexus-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Nexus. */
+export async function loadNexus(): Promise<boolean> {
+  if (nexusAsset) return true;
+  try {
+    const gltf = await loadGlbOffline(nexusUrl);
+    const base = gltf.scene.getObjectByName("Nexus") as THREE.Mesh | undefined;
+    const crystal = gltf.scene.getObjectByName("Crystal") as THREE.Mesh | undefined;
+    if (!base?.isMesh || !crystal?.isMesh) throw new Error("GLB benötigt die Meshes Nexus und Crystal");
+    const mat = (Array.isArray(base.material) ? base.material[0] : base.material) as THREE.MeshStandardMaterial;
+    if (mat.map) mat.map.anisotropy = 4;
+    markSilhouette(mat);
+    nexusAsset = { base, crystal, outlineGeo: smoothOutlineGeometry(base.geometry) };
+    return true;
+  } catch (err) {
+    console.error("Nexus-GLB konnte nicht geladen werden, nutze Ersatzmodell:", err);
+    return false;
+  }
+}
+
+/** Nexus aus dem Modell: Sockel mit Krallen, Kristall in Teamfarbe dreht sich und leuchtet. */
+function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
+  const root = new THREE.Group();
+  const base = new THREE.Mesh(asset.base.geometry, asset.base.material);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  root.add(base);
+  const top = new THREE.Group();
+  root.add(top);
+  const crystal = new THREE.Group();
+  crystal.position.copy(asset.crystal.position);
+  const gemM = gemMat(team, 0.95);
+  // etwas weniger Eigenleuchten, damit die Facetten des großen Kristalls sichtbar bleiben
+  gemM.emissiveIntensity = 0.6;
+  const gem = new THREE.Mesh(asset.crystal.geometry, markSilhouette(gemM));
+  gem.castShadow = true;
+  crystal.add(gem);
+  top.add(crystal);
+  const glow = glowSprite(TEAM_GLOW[team], 11, 0.6);
+  glow.position.copy(asset.crystal.position);
+  top.add(glow);
+  const rubble = new THREE.Mesh(
+    merge([
+      colored(new THREE.DodecahedronGeometry(1.2, 0), 0x3a3238, mat4(0.6, 1.8, 0.2)),
+      colored(new THREE.OctahedronGeometry(0.8, 0), 0x2c2630, mat4(-0.8, 1.6, -0.5, 0.8, 1.6, 0.8, 0.9, 0, 0.4)),
+      colored(new THREE.OctahedronGeometry(0.6, 0), 0x2c2630, mat4(0.9, 1.5, -1.0, 0.8, 1.6, 0.8, 1.4, 0, 1.0)),
+    ]),
+    statueMat(),
+  );
+  rubble.visible = false;
+  root.add(rubble);
+  const outline = silhouetteOutline(asset.outlineGeo, 0xff2a1a, 0.09);
+  root.add(outline);
+  return { root, crystal, glow, top, rubble, crystalY: crystal.position.y, outline };
+}
+
 export function buildNexus(team: 0 | 1): StructModel {
+  if (nexusAsset) return buildNexusModel(team, nexusAsset);
   const root = new THREE.Group();
   const mat = statueMat();
   const gem = gemMat(team, 0.95);
