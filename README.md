@@ -80,3 +80,17 @@ python3 assets-src/sentinel_blue.py src/assets/guardian.glb src/assets/guardian_
 ```
 
 Das frühere, per Skript gebaute Wächtermodell (`assets-src/guardian.py`) bleibt als Quelle erhalten.
+
+## 3D-Modell des Nexus
+
+Der Nexus ist ein Tripo-Modell (roter Kristall auf verziertem Sockel). `assets-src/nexus.py` setzt den
+Sockelboden auf Höhe 0, skaliert auf den bisherigen Außenradius 4,8, trennt den Kristall (die fast ganz roten
+Mesh-Inseln in der Mitte) als eigenes Teil `Crystal` ab, glättet die Normalen und speichert die Textur als
+2K-JPEG (690 KB). Im Spiel dreht sich der Kristall und leuchtet in Teamfarbe.
+
+```bash
+python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.glb src/assets/
+```
+
+Beide Modelle werden ohne Netzwerkzugriff geladen (eingebettete Datei selbst dekodiert, Texturen als
+data:-Bilder), damit sie auch in abgeschotteten Vorschauen wie der Claude-App erscheinen.

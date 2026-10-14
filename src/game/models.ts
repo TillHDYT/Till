@@ -488,9 +488,9 @@ function outlineMesh(geo: THREE.BufferGeometry, color: number, width: number) {
 }
 
 /** Markiert ein Material im Stencil-Puffer, damit der Umriss nur außerhalb der Figur erscheint. */
-function markSilhouette<T extends THREE.Material>(m: T) {
+function markSilhouette<T extends THREE.Material>(m: T, ref = 1) {
   m.stencilWrite = true;
-  m.stencilRef = 1;
+  m.stencilRef = ref;
   m.stencilFunc = THREE.AlwaysStencilFunc;
   m.stencilZPass = THREE.ReplaceStencilOp;
   return m;
@@ -527,10 +527,10 @@ function smoothOutlineGeometry(src: THREE.BufferGeometry) {
 }
 
 /** Roter Umriss wie in LoL: nur die Außenkante der Figur, keine roten Ränder auf der Figur selbst. */
-function silhouetteOutline(geo: THREE.BufferGeometry, color: number, width: number) {
+function silhouetteOutline(geo: THREE.BufferGeometry, color: number, width: number, ref = 1) {
   const mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
   mat.stencilWrite = true;
-  mat.stencilRef = 1;
+  mat.stencilRef = ref;
   mat.stencilFunc = THREE.NotEqualStencilFunc;
   mat.stencilFail = THREE.KeepStencilOp;
   mat.stencilZFail = THREE.KeepStencilOp;
@@ -541,6 +541,7 @@ function silhouetteOutline(geo: THREE.BufferGeometry, color: number, width: numb
       .replace("#include <begin_vertex>", `vec3 transformed = vec3(position) + smoothNormal * ${width.toFixed(3)};`);
   };
   mat.customProgramCacheKey = () => `silhouette${width}`;
+  // eigener Stencil-Wert je Gebäudeart: Nexus (2) und Türme (1) schneiden sich gegenseitig keine Lücken in den Umriss
   const m = new THREE.Mesh(geo, mat);
   m.renderOrder = 2;
   m.visible = false;
@@ -838,6 +839,7 @@ export function buildBrazier() {
 // ---------------- Nexus aus dem 3D-Modell (assets-src/nexus.py -> nexus.glb) ----------------
 
 type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry };
+const NEXUS_STENCIL = 2;
 let nexusAsset: NexusAsset | null = null;
 
 /** Lädt das Nexus-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Nexus. */
@@ -850,7 +852,7 @@ export async function loadNexus(): Promise<boolean> {
     if (!base?.isMesh || !crystal?.isMesh) throw new Error("GLB benötigt die Meshes Nexus und Crystal");
     const mat = (Array.isArray(base.material) ? base.material[0] : base.material) as THREE.MeshStandardMaterial;
     if (mat.map) mat.map.anisotropy = 4;
-    markSilhouette(mat);
+    markSilhouette(mat, NEXUS_STENCIL);
     nexusAsset = { base, crystal, outlineGeo: smoothOutlineGeometry(base.geometry) };
     return true;
   } catch (err) {
@@ -870,27 +872,34 @@ function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   root.add(top);
   const crystal = new THREE.Group();
   crystal.position.copy(asset.crystal.position);
-  const gemM = gemMat(team, 0.95);
+  const gemM = gemMat(team);
   // etwas weniger Eigenleuchten, damit die Facetten des großen Kristalls sichtbar bleiben
   gemM.emissiveIntensity = 0.6;
-  const gem = new THREE.Mesh(asset.crystal.geometry, markSilhouette(gemM));
+  const gem = new THREE.Mesh(asset.crystal.geometry, markSilhouette(gemM, NEXUS_STENCIL));
   gem.castShadow = true;
   crystal.add(gem);
   top.add(crystal);
   const glow = glowSprite(TEAM_GLOW[team], 11, 0.6);
   glow.position.copy(asset.crystal.position);
   top.add(glow);
+  // Trümmer: abgebrochener, erloschener Kristall und umgestürzte Splitter über dem Rand der Schale
+  const cg = asset.crystal.geometry;
+  const cy = asset.crystal.position.y;
+  const dead = team === 0 ? 0x34405a : 0x5a3434;
   const rubble = new THREE.Mesh(
     merge([
-      colored(new THREE.DodecahedronGeometry(1.2, 0), 0x3a3238, mat4(0.6, 1.8, 0.2)),
-      colored(new THREE.OctahedronGeometry(0.8, 0), 0x2c2630, mat4(-0.8, 1.6, -0.5, 0.8, 1.6, 0.8, 0.9, 0, 0.4)),
-      colored(new THREE.OctahedronGeometry(0.6, 0), 0x2c2630, mat4(0.9, 1.5, -1.0, 0.8, 1.6, 0.8, 1.4, 0, 1.0)),
+      colored(cg, dead, mat4(0, cy * 0.55, 0, 0.62, 0.42, 0.62, 0.08, 0.4, 0.05)),
+      colored(cg, 0x3d3842, mat4(1.25, 3.4, 0.6, 0.34, 0.34, 0.34, 0.2, 0.6, 1.25)),
+      colored(cg, dead, mat4(-1.2, 3.3, 0.5, 0.3, 0.3, 0.3, -0.3, 2.1, -1.1)),
+      colored(cg, 0x3d3842, mat4(0.2, 3.5, -1.3, 0.28, 0.28, 0.28, 1.2, 4.0, 0.2)),
+      colored(new THREE.DodecahedronGeometry(0.55, 0), 0x3a3238, mat4(-0.6, 3.0, 1.35)),
     ]),
     statueMat(),
   );
+  rubble.castShadow = true;
   rubble.visible = false;
   root.add(rubble);
-  const outline = silhouetteOutline(asset.outlineGeo, 0xff2a1a, 0.09);
+  const outline = silhouetteOutline(asset.outlineGeo, 0xff2a1a, 0.09, NEXUS_STENCIL);
   root.add(outline);
   return { root, crystal, glow, top, rubble, crystalY: crystal.position.y, outline };
 }
