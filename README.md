@@ -54,8 +54,9 @@ Testhilfen: `npm run sim` simuliert ein ganzes Bot-Match ohne Grafik,
 
 ## 3D-Modell der Türme
 
-Die Wächterstatue der Türme ist ein echtes 3D-Modell (`src/assets/guardian.glb`, ca. 18.000 Dreiecke,
-mit Farb-, Normal- und Rauheit/Metall-Textur). Sie wird mit Blender erzeugt:
+Die Wächterstatue der Türme ist ein echtes 3D-Modell (`src/assets/guardian.glb`, ca. 23.000 Dreiecke,
+mit Farb-, Normal- und Rauheit/Metall-Textur). Vorlage für Form und Farben ist das Konzeptbild
+`assets-src/guardian_reference.jpg`; das Bild selbst wird im Spiel nicht verwendet. Die Statue wird mit Blender erzeugt:
 
 ```bash
 pip install bpy            # Blender als Python-Modul (Python 3.13)
@@ -63,5 +64,8 @@ python assets-src/guardian.py src/assets
 python3 -c "from PIL import Image; Image.open('src/assets/guardian_albedo_blue.png').convert('RGB').save('src/assets/guardian_blue.jpg', quality=86)"
 ```
 
-Das Skript modelliert ein detailliertes High-Poly-Modell (Rüstung, Umhang, Stab, Sockel), reduziert es,
+Das Skript baut den Körper aus Gelenkketten (Skin-Modifier) in Standpose, legt die Rüstungsplatten
+eng an die Körperform an (Brustpanzer, Schulterlamellen, Plattenrock, Bein- und Armschienen, Topfhelm mit
+T-Visier), drapiert den Umhang per Stoffsimulation über Körper und Sockel und setzt den Stab mit Klauenkrone
+und Kristall in die rechte Hand. Danach reduziert es das High-Poly-Modell,
 wickelt die UVs ab und backt die Materialien vom High-Poly- auf das Low-Poly-Modell.
