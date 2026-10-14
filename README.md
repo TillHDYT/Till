@@ -58,10 +58,11 @@ Der Boden ist ein glattes Höhenfeld (zwei Punkte pro Einheit). Die Waldkanten f
 Abstandsfeld statt dem Zellraster der Wegfindung, dadurch gibt es keine Treppenstufen an Felswänden und
 Flussufern. Steile Hänge bekommen automatisch eine Felstextur, oben auf den Wänden wächst Moos.
 Bäume (Nadel- und Laubbäume), Büsche aus hohem Gras und Felsbrocken sind Instanzen mit gemalten
-Alpha-Texturen und wiegen sich leicht im Wind. Die Texturen erzeugt ein Skript:
+Alpha-Texturen und wiegen sich leicht im Wind. Jungleboden (`grass.jpg`) und Lanes (`path.jpg`) nutzen die
+vorgegebenen Texturen, die übrigen erzeugt ein Skript:
 
 ```bash
-python3 assets-src/env_textures.py src/assets   # rock.jpg, dirt.jpg, grass_field.jpg, pine.png, leaves.png, tallgrass.png
+python3 assets-src/env_textures.py src/assets   # rock.jpg, pine.png, leaves.png, tallgrass.png
 ```
 
 ## 3D-Modell der Türme

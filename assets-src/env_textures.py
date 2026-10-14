@@ -1,6 +1,7 @@
 # Gemalte Umgebungstexturen für die Karte (kachelbar bzw. mit Alpha):
 #   python3 assets-src/env_textures.py src/assets
-# rock.jpg (Felswände), dirt.jpg (Wege), pine.png (Nadelzweige), leaves.png (Laubkrone), tallgrass.png (Büsche)
+# rock.jpg (Felswände), pine.png (Nadelzweige), leaves.png (Laubkrone), tallgrass.png (Büsche).
+# Boden (grass.jpg) und Wege (path.jpg) sind die vorgegebenen Texturen und werden nicht erzeugt.
 import math
 import os
 import sys
@@ -103,38 +104,6 @@ def rock(n=512, cells=34, seed=3):
     rim = (1 - sstep(4.0, 10.0, f2 - f1)) * crack * (vy < 0)
     col += rim[..., None] * 26
     save_rgb(col, "rock.jpg")
-
-
-# ---------------------------------------------------------------- Weg: festgetretene Erde mit Kieseln
-
-def dirt(n=512, seed=21):
-    base = fbm(n, seed)
-    col = lerp((124, 98, 68), (172, 142, 100), sstep(0.15, 0.9, base))
-    col = col * (0.9 + 0.2 * fbm(n, seed + 5, (10, 4, 2)))[..., None]
-    worn = sstep(0.55, 0.8, fbm(n, seed + 9, (64, 32)))
-    col = col * (1 - worn[..., None] * 0.1) + worn[..., None] * np.array([20, 16, 10])
-    img = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8)).convert("RGBA")
-    S = 2
-    layer = Image.new("RGBA", (n * S, n * S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    r = np.random.default_rng(seed)
-    for _ in range(150):
-        cx, cy = r.random() * n * S, r.random() * n * S
-        rw = (2.0 + r.random() ** 2.5 * 7) * S
-        rh = rw * (0.55 + r.random() * 0.35)
-        tone = 105 + r.random() * 45
-        c = (int(tone), int(tone * 0.92), int(tone * 0.8))
-        for ox in (-n * S, 0, n * S):
-            for oy in (-n * S, 0, n * S):
-                x, y = cx + ox, cy + oy
-                if x + rw < 0 or y + rh < 0 or x - rw > n * S or y - rh > n * S:
-                    continue
-                d.ellipse((x - rw + S, y - rh + 1.6 * S, x + rw + S, y + rh + 1.6 * S), fill=(40, 30, 20, 110))
-                d.ellipse((x - rw, y - rh, x + rw, y + rh), fill=c + (255,))
-                d.ellipse((x - rw * 0.6, y - rh * 0.75, x + rw * 0.3, y - rh * 0.05), fill=(min(255, int(tone * 1.15)), min(255, int(tone * 1.08)), min(255, int(tone * 0.95)), 120))
-    layer = layer.resize((n, n), Image.LANCZOS)
-    img = Image.alpha_composite(img, layer)
-    save_rgb(np.asarray(img.convert("RGB"), float), "dirt.jpg")
 
 
 # ---------------------------------------------------------------- Nadelzweige: u läuft um den Baum, v von innen (oben) zur Spitze (unten)
@@ -247,40 +216,7 @@ def tallgrass(n=256, seed=13):
     Image.fromarray(bleed(a)).save(os.path.join(OUT, "tallgrass.png"), optimize=True)
 
 
-# ---------------------------------------------------------------- Rasen: dichte, weiche Halme in sattem Grün, ohne Blumen
-
-def grass(n=512, seed=31):
-    base = fbm(n, seed, (128, 64, 32, 16))
-    col = lerp((50, 88, 40), (76, 122, 50), sstep(0.2, 0.85, base))
-    img = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8)).convert("RGBA")
-    S = 2
-    N = n * S
-    layer = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    r = np.random.default_rng(seed)
-    clump = fbm(n, seed + 3, (40, 20))
-    pal = [(38, 74, 34), (54, 96, 40), (70, 116, 48), (88, 136, 56), (104, 150, 62)]
-    for _ in range(16000):
-        x, y = r.random() * N, r.random() * N
-        cl = clump[int(y / S) % n, int(x / S) % n]
-        tone = min(4, max(0, int(r.random() * 3 + cl * 2.4)))
-        c = pal[tone] + (int(150 + r.random() * 105),)
-        ln = (5 + r.random() * 9) * S
-        ang = -math.pi / 2 + (r.random() - 0.5) * 1.3
-        x1, y1 = x + math.cos(ang) * ln, y + math.sin(ang) * ln
-        wdt = int((1.2 + r.random() * 1.6) * S)
-        for ox in (-N, 0, N):
-            for oy in (-N, 0, N):
-                if -20 < x + ox < N + 20 and -40 < y + oy < N + 40:
-                    d.line((x + ox, y + oy, x1 + ox, y1 + oy), fill=c, width=wdt)
-    layer = layer.resize((n, n), Image.LANCZOS)
-    img = Image.alpha_composite(img, layer)
-    save_rgb(np.asarray(img.convert("RGB"), float), "grass_field.jpg")
-
-
 rock()
-dirt()
-grass()
 pine()
 leaves()
 tallgrass()

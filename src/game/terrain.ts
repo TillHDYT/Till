@@ -3,9 +3,9 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { fbm, noise2, rng, type NavGrid } from "./navgrid";
-import dirtUrl from "../assets/dirt.jpg";
-import grassUrl from "../assets/grass_field.jpg";
+import grassUrl from "../assets/grass.jpg";
 import leavesUrl from "../assets/leaves.png";
+import pathUrl from "../assets/path.jpg";
 import pineUrl from "../assets/pine.png";
 import rockUrl from "../assets/rock.jpg";
 import stoneUrl from "../assets/stone.jpg";
@@ -560,12 +560,12 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   const groundMat = new THREE.MeshLambertMaterial({ map: tex });
   const grassUniforms = {
     uGrass: { value: loadGrass() },
-    uPath: { value: loadGrass(dirtUrl) },
+    uPath: { value: loadGrass(pathUrl) },
     uStone: { value: loadGrass(stoneUrl) },
     uRock: { value: loadGrass(rockUrl) },
     uGMask: { value: groundMask(grid, high ? 512 : 320) },
     uGrassScale: { value: 1 / 7.5 },
-    uGrassTint: { value: new THREE.Vector3(0.84, 0.84, 0.86) },
+    uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
   };
   fog.patch(
     groundMat,
@@ -589,15 +589,12 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           vec3 g2 = texture2D(uGrass, rp).rgb;
           float macro = texture2D(uGrass, vFogW.xz * 0.011).g * 8.0;
           vec3 grassCol = mix(g1, g2, smoothstep(0.35, 0.65, fract(macro))) * uGrassTint * gMask.g;
-          // großflächige Helligkeits- und Farbwechsel wie gemalt
-          vec2 bigS = texture2D(uGrass, vFogW.xz * 0.0037 + 0.3).gr;
-          grassCol *= mix(vec3(0.82, 0.86, 0.92), vec3(1.08, 1.06, 0.94), smoothstep(0.2, 0.55, bigS.x)) * (0.9 + bigS.y * 0.35);
-          // Weg: festgetretene Erde, zwei gedrehte Lagen gegen sichtbare Wiederholung
+          // Weg: Lane-Textur (Erde mit Steinplatten), zwei gedrehte Lagen gegen sichtbare Wiederholung
           if (gMask.b > 0.004) {
-            vec2 pp = vFogW.xz / 9.0;
+            vec2 pp = vFogW.xz / 15.0;
             vec3 p1 = texture2D(uPath, pp).rgb;
-            vec3 p2 = texture2D(uPath, mat2(0.6, 0.8, -0.8, 0.6) * pp * 0.7 + 0.5).rgb;
-            vec3 pathCol = mix(p1, p2, 0.4) * vec3(0.92, 0.86, 0.78) * mix(0.8, 1.02, gMask.g);
+            vec3 p2 = texture2D(uPath, mat2(0.6, 0.8, -0.8, 0.6) * pp * 0.8 + 0.5).rgb;
+            vec3 pathCol = mix(p1, p2, 0.35) * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
             diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
           }
           // Basis: Steinplatten, leicht in Teamfarbe getönt
