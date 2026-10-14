@@ -52,6 +52,18 @@ Testhilfen: `npm run sim` simuliert ein ganzes Bot-Match ohne Grafik,
 `npm run map` zeichnet das Kartenraster als PNG. Im Browser: `?quick=1` startet sofort,
 `?autoplay=1` lässt einen Bot deinen Champion spielen, `?warp=300` spult 5 Minuten vor, `?top=1` zeigt die Karte von oben.
 
+## Umgebung
+
+Der Boden ist ein glattes Höhenfeld (zwei Punkte pro Einheit). Die Waldkanten folgen einem geglätteten
+Abstandsfeld statt dem Zellraster der Wegfindung, dadurch gibt es keine Treppenstufen an Felswänden und
+Flussufern. Steile Hänge bekommen automatisch eine Felstextur, oben auf den Wänden wächst Moos.
+Bäume (Nadel- und Laubbäume), Büsche aus hohem Gras und Felsbrocken sind Instanzen mit gemalten
+Alpha-Texturen und wiegen sich leicht im Wind. Die Texturen erzeugt ein Skript:
+
+```bash
+python3 assets-src/env_textures.py src/assets   # rock.jpg, dirt.jpg, grass_field.jpg, pine.png, leaves.png, tallgrass.png
+```
+
 ## 3D-Modell der Türme
 
 Die Wächterstatue der Türme ist ein echtes 3D-Modell (`src/assets/guardian.glb`, ca. 23.000 Dreiecke,

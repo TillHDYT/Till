@@ -157,6 +157,35 @@ class Heap {
   }
 }
 
+/** Bilineares Abtasten eines Zellfelds (Zellmitte bei +0.5). */
+export function cellSample(arr: ArrayLike<number>, n: number, x: number, z: number) {
+  const fx = Math.max(0, Math.min(n - 1.001, x - 0.5));
+  const fz = Math.max(0, Math.min(n - 1.001, z - 0.5));
+  const ix = fx | 0;
+  const iz = fz | 0;
+  const tx = fx - ix;
+  const tz = fz - iz;
+  const i = iz * n + ix;
+  return (arr[i] * (1 - tx) + arr[i + 1] * tx) * (1 - tz) + (arr[i + n] * (1 - tx) + arr[i + n + 1] * tx) * tz;
+}
+
+/** 3×3-Weichzeichner (Rand wird geklemmt). */
+function blur(src: Float32Array, n: number) {
+  const tmp = new Float32Array(n * n);
+  const out = new Float32Array(n * n);
+  for (let z = 0; z < n; z++)
+    for (let x = 0; x < n; x++) {
+      const i = z * n + x;
+      tmp[i] = (src[z * n + Math.max(0, x - 1)] + src[i] * 2 + src[z * n + Math.min(n - 1, x + 1)]) / 4;
+    }
+  for (let z = 0; z < n; z++)
+    for (let x = 0; x < n; x++) {
+      const i = z * n + x;
+      out[i] = (tmp[Math.max(0, z - 1) * n + x] + tmp[i] * 2 + tmp[Math.min(n - 1, z + 1) * n + x]) / 4;
+    }
+  return out;
+}
+
 export class NavGrid {
   readonly n = MAP;
   /** 1 = begehbar. */
@@ -172,7 +201,11 @@ export class NavGrid {
   readonly base: Int8Array;
   /** -1 kein Busch, sonst Busch-Index. */
   readonly brush: Int16Array;
-  /** Höhen an den (n+1)² Gitterecken. */
+  /** Geglätteter Abstand zur Waldkante (> 0 offen, < 0 Wald), gegen Treppenstufen an den Kanten. */
+  readonly sdf: Float32Array;
+  /** Höhenpunkte pro Einheit. */
+  readonly hres = 2;
+  /** Höhen an den (n·hres+1)² Gitterpunkten, nur für die Optik. */
   readonly heights: Float32Array;
 
   private gScore: Float32Array;
@@ -269,38 +302,37 @@ export class NavGrid {
     this.clear = edt(wallSeed, n);
     this.wallDepth = edt(openSeed, n);
 
-    // Höhen an den Ecken
-    const h = new Float32Array((n + 1) * (n + 1));
-    for (let z = 0; z <= n; z++) {
-      for (let x = 0; x <= n; x++) {
-        let sum = 0;
-        let cnt = 0;
-        for (let dz = -1; dz <= 0; dz++) {
-          for (let dx = -1; dx <= 0; dx++) {
-            const cx = x + dx;
-            const cz = z + dz;
-            if (cx < 0 || cz < 0 || cx >= n || cz >= n) continue;
-            sum += this.cellHeight(cz * n + cx, cx, cz);
-            cnt++;
-          }
-        }
-        h[z * (n + 1) + x] = cnt ? sum / cnt : 0;
+    const sd = new Float32Array(n * n);
+    for (let i = 0; i < n * n; i++) sd[i] = this.walk[i] ? this.clear[i] - 0.5 : 0.5 - this.wallDepth[i];
+    this.sdf = blur(blur(sd, n), n);
+
+    // Höhen: weiche Felskanten statt Zellstufen
+    const R = this.hres;
+    const N = n * R;
+    const h = new Float32Array((N + 1) * (N + 1));
+    const baseArr = new Float32Array(n * n);
+    for (let i = 0; i < n * n; i++) baseArr[i] = this.base[i] >= 0 ? 1 : 0;
+    for (let z = 0; z <= N; z++) {
+      for (let x = 0; x <= N; x++) {
+        const px = x / R;
+        const pz = z / R;
+        const s = this.sdAt(px, pz);
+        const lane = cellSample(this.lane, n, px, pz);
+        let open = cellSample(baseArr, n, px, pz) * 0.12 - cellSample(this.river, n, px, pz) * 1.15;
+        open += (fbm(px * 0.12 + 50, pz * 0.12) - 0.5) * 0.25 * (1 - lane);
+        for (const f of FOUNTAIN) open = Math.max(open, 0.42 * smooth(7.9, 7.0, Math.hypot(px - f.x, pz - f.z)));
+        const d = Math.max(0, -s);
+        const k = smooth(0, 1.5, d);
+        const wall = 2.2 + Math.min(d, 6) * 0.3 + fbm(px * 0.3, pz * 0.3) * 1.0;
+        h[z * (N + 1) + x] = open + (wall - open) * k;
       }
     }
     this.heights = h;
   }
 
-  private cellHeight(i: number, x: number, z: number) {
-    if (!this.walk[i]) {
-      const d = this.wallDepth[i];
-      return 1.1 + Math.min(d, 4) * 0.85 + fbm(x * 0.3, z * 0.3) * 1.1;
-    }
-    const r = this.river[i];
-    let b = this.base[i] >= 0 ? 0.12 : 0;
-    // Brunnenplattform ist leicht erhöht
-    for (const f of FOUNTAIN) if (Math.hypot(x + 0.5 - f.x, z + 0.5 - f.z) < 7.4) b = 0.42;
-    const bump = (fbm(x * 0.12 + 50, z * 0.12) - 0.5) * 0.25 * (1 - this.lane[i]);
-    return b + bump - r * 1.15;
+  /** Abstand zur Waldkante mit leichtem Rauschen (für Höhen und Bodenbemalung). */
+  sdAt(x: number, z: number) {
+    return cellSample(this.sdf, this.n, x, z) + (fbm(x * 0.21 + 7, z * 0.21 + 3) - 0.5) * 0.9;
   }
 
   inBounds(x: number, z: number) {
@@ -322,14 +354,15 @@ export class NavGrid {
   }
 
   heightAt(x: number, z: number) {
-    const n = this.n;
-    const fx = Math.max(0, Math.min(n - 0.001, x));
-    const fz = Math.max(0, Math.min(n - 0.001, z));
+    const R = this.hres;
+    const N = this.n * R;
+    const fx = Math.max(0, Math.min(N - 0.001, x * R));
+    const fz = Math.max(0, Math.min(N - 0.001, z * R));
     const ix = Math.floor(fx);
     const iz = Math.floor(fz);
     const tx = fx - ix;
     const tz = fz - iz;
-    const w = n + 1;
+    const w = N + 1;
     const h = this.heights;
     const a = h[iz * w + ix];
     const b = h[iz * w + ix + 1];
