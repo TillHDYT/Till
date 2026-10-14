@@ -29,8 +29,8 @@ def lowpoly(hi, target_tris, name):
 
 statue.name = "Statue_hi"
 staff.name = "Staff_hi"
-statue_lo = lowpoly(statue, 16000, "Statue")
-staff_lo = lowpoly(staff, 2400, "Staff")
+statue_lo = lowpoly(statue, 20000, "Statue")
+staff_lo = lowpoly(staff, 3200, "Staff")
 print("LOW TRIS", sum(len(p.vertices) - 2 for p in statue_lo.data.polygons), sum(len(p.vertices) - 2 for p in staff_lo.data.polygons))
 
 select_only(statue_lo, staff_lo)

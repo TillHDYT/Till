@@ -39,4 +39,6 @@ def render_preview(path, yaw=-0.45, pitch=0.42, dist=17.0, res=(560, 720), sampl
 
 
 if PREVIEW:
-    render_preview(PREVIEW)
+    # GUARDIAN_VIEW="yaw,pitch,dist" setzt eine andere Kameraansicht (z. B. wie im Referenzbild)
+    _view = [float(x) for x in os.environ.get("GUARDIAN_VIEW", "-0.45,0.42,17").split(",")]
+    render_preview(PREVIEW, yaw=_view[0], pitch=_view[1], dist=_view[2])
