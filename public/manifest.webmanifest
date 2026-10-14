@@ -1,0 +1,10 @@
+{
+  "name": "Kluft der Legenden",
+  "short_name": "Kluft",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0a1428",
+  "theme_color": "#0a1428",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
