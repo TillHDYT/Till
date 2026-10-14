@@ -51,3 +51,17 @@ D Blitz, F Heilen, B Rückruf, P Laden, Pfeiltasten laufen, Mausrad zoomen, Esc 
 Testhilfen: `npm run sim` simuliert ein ganzes Bot-Match ohne Grafik,
 `npm run map` zeichnet das Kartenraster als PNG. Im Browser: `?quick=1` startet sofort,
 `?autoplay=1` lässt einen Bot deinen Champion spielen, `?warp=300` spult 5 Minuten vor, `?top=1` zeigt die Karte von oben.
+
+## 3D-Modell der Türme
+
+Die Wächterstatue der Türme ist ein echtes 3D-Modell (`src/assets/guardian.glb`, ca. 18.000 Dreiecke,
+mit Farb-, Normal- und Rauheit/Metall-Textur). Sie wird mit Blender erzeugt:
+
+```bash
+pip install bpy            # Blender als Python-Modul (Python 3.13)
+python assets-src/guardian.py src/assets
+python3 -c "from PIL import Image; Image.open('src/assets/guardian_albedo_blue.png').convert('RGB').save('src/assets/guardian_blue.jpg', quality=86)"
+```
+
+Das Skript modelliert ein detailliertes High-Poly-Modell (Rüstung, Umhang, Stab, Sockel), reduziert es,
+wickelt die UVs ab und backt die Materialien vom High-Poly- auf das Low-Poly-Modell.

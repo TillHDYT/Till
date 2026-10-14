@@ -7,6 +7,10 @@ import detailUrl from "../assets/detail.jpg";
 import bannerRedUrl from "../assets/banner_red.png";
 import bannerBlueUrl from "../assets/banner_blue.png";
 import emblemUrl from "../assets/emblem.jpg";
+import guardianUrl from "../assets/guardian.glb";
+import guardianBlueUrl from "../assets/guardian_blue.jpg";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 const texCache = new Map<string, THREE.Texture>();
 function tex(url: string, repeat = 1, srgb = true) {
@@ -458,7 +462,8 @@ const Box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
 export const TURRET_STATUE_SCALE = 1.35;
 
 /** Turm: humanoide Wächterstatue auf rundem Sockel (Entwurf aus der überarbeiteten Version). */
-export function buildTurret(team: 0 | 1): StructModel {
+/** Alter, aus Grundformen gebauter Turm. Nur noch Rückfall, falls das 3D-Modell nicht lädt. */
+function buildTurretProcedural(team: 0 | 1): StructModel {
   const root = new THREE.Group();
   const C = {
     stoneD: 0x2c2f33,
@@ -1054,4 +1059,111 @@ export function buildFountain(team: 0 | 1) {
   ring.position.y = 0.44;
   root.add(ring);
   return root;
+}
+
+// ---------------- Turm aus dem 3D-Modell (assets-src/guardian.py -> guardian.glb) ----------------
+
+type GuardianAsset = {
+  statue: THREE.Mesh;
+  staff: THREE.Object3D;
+  materials: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+};
+let guardian: GuardianAsset | null = null;
+
+/** Lädt die Wächterstatue einmalig. Muss vor dem Aufbau der Szene fertig sein. */
+export async function loadGuardian(): Promise<boolean> {
+  if (guardian) return true;
+  try {
+    const gltf = await new GLTFLoader().loadAsync(guardianUrl);
+    const statue = gltf.scene.getObjectByName("Statue") as THREE.Mesh | undefined;
+    const staff = gltf.scene.getObjectByName("Staff");
+    if (!statue || !staff || !staff.getObjectByName("Crystal")) throw new Error("Statue, Stab oder Kristall fehlt im Modell");
+    const red = statue.material as THREE.MeshStandardMaterial;
+    const blue = red.clone();
+    const blueMap = await new THREE.TextureLoader().loadAsync(guardianBlueUrl);
+    blueMap.flipY = false;
+    blueMap.colorSpace = THREE.SRGBColorSpace;
+    blueMap.anisotropy = 4;
+    blue.map = blueMap;
+    for (const m of [red, blue]) {
+      if (m.map) m.map.anisotropy = 4;
+    }
+    guardian = { statue, staff, materials: [blue, red] };
+    return true;
+  } catch (err) {
+    console.warn("Wächterstatue konnte nicht geladen werden, nutze Ersatzmodell:", err);
+    return false;
+  }
+}
+
+/** Metall braucht eine Umgebung zum Spiegeln, sonst wirkt es schwarz. Einmal pro Renderer aufrufen. */
+export function setGuardianEnvironment(renderer: THREE.WebGLRenderer) {
+  if (!guardian) return;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  for (const m of guardian.materials) {
+    m.envMap = env;
+    m.envMapIntensity = 0.55;
+    m.needsUpdate = true;
+  }
+}
+
+export function guardianLoaded() {
+  return guardian !== null;
+}
+
+export function buildTurret(team: 0 | 1): StructModel {
+  if (!guardian) return buildTurretProcedural(team);
+  const root = new THREE.Group();
+  const top = new THREE.Group();
+  root.add(top);
+
+  const statue = new THREE.Mesh(guardian.statue.geometry, guardian.materials[team]);
+  statue.castShadow = true;
+  statue.receiveShadow = true;
+  top.add(statue);
+
+  const staff = guardian.staff.clone(true);
+  staff.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.castShadow = true;
+      if (m.name !== "Crystal") m.material = guardian!.materials[team];
+    }
+  });
+  top.add(staff);
+  const crystal = staff.getObjectByName("Crystal") as THREE.Mesh;
+  crystal.material = gemMat(team);
+  const crystalY = crystal.position.y;
+  const glow = glowSprite(TEAM_GLOW[team], 3.8, 0.85);
+  glow.position.copy(crystal.position);
+  staff.add(glow);
+
+  // leuchtender Ring in Teamfarbe am Fuß der Figur
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.84, 0.05, 6, 48), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 1.61;
+  top.add(ring);
+
+  const C = { stone: 0x44484e, stoneL: 0x5c6168, armorD: 0x34373c, armor: 0x4a4e55 };
+  const mat = statueMat();
+  const rubble = new THREE.Mesh(
+    merge([
+      colored(Cyl(2.75, 2.95, 0.45, 24), C.stone, mat4(0, 0.22, 0)),
+      colored(Cyl(1.9, 2.3, 0.9, 16), C.stoneL, mat4(0, 0.85, 0)),
+      colored(Cyl(0.9, 1.2, 1.1, 10), C.armorD, mat4(0, 1.8, 0)),
+      colored(new THREE.DodecahedronGeometry(0.8, 0), C.armor, mat4(1.6, 1.0, 0.9, 1, 0.7, 1, 0.4, 0.2)),
+      colored(new THREE.DodecahedronGeometry(0.6, 0), C.stoneL, mat4(-1.4, 0.9, -0.8, 1, 0.8, 1, 0.1, 1.1)),
+      colored(new THREE.DodecahedronGeometry(0.5, 0), C.armorD, mat4(-0.6, 0.8, 1.9, 1, 0.6, 1, 0.9, 0.3)),
+    ]),
+    mat,
+  );
+  rubble.visible = false;
+  rubble.castShadow = true;
+  root.add(rubble);
+
+  const outline = outlineMesh(guardian.statue.geometry, 0xff2a1a, 0.025);
+  root.add(outline);
+  return { root, crystal, glow, top, rubble, crystalY, staff, outline };
 }

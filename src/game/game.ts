@@ -4,6 +4,7 @@ import { Sfx } from "./audio";
 import { Hud } from "./hud";
 import { Input } from "./input";
 import { MAP } from "./mapdata";
+import { setGuardianEnvironment } from "./models";
 import { NavGrid } from "./navgrid";
 import type { Quality } from "./terrain";
 import { View } from "./view";
@@ -75,6 +76,7 @@ export class Game {
     this.scene.add(sun.target);
     this.sun = sun;
 
+    setGuardianEnvironment(this.renderer);
     this.view = new View(this.scene, this.world, opts.quality);
     this.hud = new Hud(container, this.world, this.view, {
       onPause: () => this.setPaused(true),

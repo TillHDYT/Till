@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { Sfx } from "./game/audio";
 import { CHAMPIONS, ROLE_NAMES, type Role } from "./game/champions";
 import { Game, navGrid } from "./game/game";
-import { buildChampion } from "./game/models";
+import { buildChampion, loadGuardian } from "./game/models";
 import type { Quality } from "./game/terrain";
 import type { Difficulty } from "./game/world";
 
@@ -187,8 +187,10 @@ function start() {
       () => {},
     );
   }
-  // Kurz warten, damit der Ladebildschirm sichtbar wird
-  setTimeout(() => {
+  // Erst das 3D-Modell der Türme laden, dann die Szene aufbauen
+  const ready = loadGuardian();
+  setTimeout(async () => {
+    await ready;
     navGrid();
     app.innerHTML = `<div class="stage" id="stage"></div><div class="rotate"><div><b>⟲</b><p>Dreh dein Handy ins Querformat</p><button class="mbtn" id="rot-ok">Trotzdem spielen</button></div></div>`;
     const stage = document.getElementById("stage")!;
