@@ -1101,21 +1101,46 @@ export function buildBrazier() {
   );
   m.castShadow = true;
   root.add(m);
-  const g = glowSprite(0xff8a30, 3.2, 0.7);
-  g.position.y = 2.8;
-  root.add(g);
-  // Flamme: zwei additive Kegel, die flackern
+  const fire = brazierFire(1);
+  fire.root.position.y = 2.42;
+  root.add(fire.root);
+  return { root, fireY: 2.5, glow: fire.glow, flame: fire.flame };
+}
+
+/** Feuer für eine Feuerschale: Leuchten und zwei flackernde, additive Flammenkegel (Animation in View). */
+export function brazierFire(size: number) {
+  const root = new THREE.Group();
+  const glow = glowSprite(0xff8a30, 3.2 * size, 0.7);
+  glow.position.y = 0.38 * size;
+  root.add(glow);
   const flame = new THREE.Group();
-  flame.position.y = 2.42;
   const fm = (color: number, r: number, h: number, o: number) => {
     const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     c.position.y = h / 2;
     flame.add(c);
   };
-  fm(0xff5a10, 0.62, 1.6, 0.55);
-  fm(0xffc040, 0.36, 1.05, 0.75);
+  fm(0xff5a10, 0.62 * size, 1.6 * size, 0.55);
+  fm(0xffc040, 0.36 * size, 1.05 * size, 0.75);
   root.add(flame);
-  return { root, fireY: 2.5, glow: g, flame };
+  return { root, glow, flame };
+}
+
+/** Goldene Feuerschalen im Startbasis-Modell (Modellkoordinaten, vorne = +z; Höhe = Schalenboden). */
+const START_BASE_BOWLS: [number, number, number][] = [
+  [-3.4, 3.3, -3.36],
+  [5.04, 3.4, 0.63],
+  [-6.72, 2.62, 2.1],
+];
+
+/** Feuer in die Schalen der Startbasis setzen (nur beim echten 3D-Modell); gibt die Feuer für die Animation zurück. */
+export function addStartBaseFires(fountain: THREE.Object3D) {
+  if (!startBase) return [];
+  return START_BASE_BOWLS.map(([x, y, z]) => {
+    const fire = brazierFire(0.62);
+    fire.root.position.set(x, y - START_BASE_SINK, z);
+    fountain.add(fire.root);
+    return fire;
+  });
 }
 
 // ---------------- Nexus aus dem 3D-Modell (assets-src/nexus.py -> nexus.glb) ----------------

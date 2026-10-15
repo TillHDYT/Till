@@ -9,6 +9,7 @@ import {
   buildBrazier,
   buildChampion,
   updateRig,
+  addStartBaseFires,
   buildFountain,
   buildInhibitor,
   buildMonster,
@@ -74,7 +75,7 @@ export class View {
   private hookChains = new Map<number, THREE.Mesh>();
   private fogT = 0;
   private playerTeam: 0 | 1;
-  private braziers: { x: number; z: number; y: number; glow: THREE.Sprite; flame: THREE.Object3D; phase: number }[] = [];
+  private braziers: { x: number; z: number; y: number; glow: THREE.Sprite; flame: THREE.Object3D; phase: number; size?: number }[] = [];
   private beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
   private tmpA = new THREE.Vector3();
   private tmpB = new THREE.Vector3();
@@ -101,6 +102,12 @@ export class View {
       fo.rotation.y = Math.atan2(100 - f.x, 100 - f.z);
       applyCameraCut(fo);
       scene.add(fo);
+      // Feuer in den Feuerschalen der Startbasis
+      fo.updateMatrixWorld(true);
+      for (const fire of addStartBaseFires(fo)) {
+        const wp = fire.root.getWorldPosition(new THREE.Vector3());
+        this.braziers.push({ x: wp.x, z: wp.z, y: wp.y + 0.1, glow: fire.glow, flame: fire.flame, phase: Math.random() * 6, size: 0.62 });
+      }
     });
 
     for (const s of world.structures) {
@@ -524,13 +531,14 @@ export class View {
     // Feuer in den Schalen
     for (const b of this.braziers) {
       const flicker = 1 + Math.sin(this.time * 13 + b.phase) * 0.08 + Math.sin(this.time * 7.3 + b.phase) * 0.06;
-      b.glow.scale.setScalar(4 * flicker);
+      const k = b.size ?? 1;
+      b.glow.scale.setScalar(4 * k * flicker);
       b.flame.scale.set(1 + Math.sin(this.time * 9 + b.phase) * 0.08, flicker * (1 + Math.sin(this.time * 17 + b.phase) * 0.12), 1 + Math.cos(this.time * 11 + b.phase) * 0.08);
       b.flame.rotation.y += dt * 2;
       if (!this.seenAt(b.x, b.z)) continue;
       if (Math.random() < 0.8) {
         const c = this.fireCol[(Math.random() * 3) | 0];
-        this.particles.emit(b.x + (Math.random() - 0.5) * 0.8, b.y + 0.4, b.z + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.4, 2.2 + Math.random() * 1.6, (Math.random() - 0.5) * 0.4, c, 1.0, 0.6, 0.5);
+        this.particles.emit(b.x + (Math.random() - 0.5) * 0.8 * k, b.y + 0.4 * k, b.z + (Math.random() - 0.5) * 0.8 * k, (Math.random() - 0.5) * 0.4, (2.2 + Math.random() * 1.6) * k, (Math.random() - 0.5) * 0.4, c, k, 0.6, 0.5);
       }
     }
   }
