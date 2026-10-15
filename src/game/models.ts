@@ -13,6 +13,7 @@ import guardianBlueUrl from "../assets/guardian_blue.jpg";
 import nexusUrl from "../assets/nexus.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
+import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -126,13 +127,134 @@ export type ChampModel = {
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
 const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl };
+/** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
+const CHAMP_ANIMS: Record<string, { death?: string }> = { kira: { death: assassinDeathUrl } };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Kiras Grundtempo). */
 const RUN_REF_SPEED = 7.2;
 
-type RigAsset = { scene: THREE.Object3D; clip: THREE.AnimationClip; height: number; minY: number; rest: number[]; noUv: boolean };
+type RigAsset = { scene: THREE.Object3D; clip: THREE.AnimationClip; death: THREE.AnimationClip | null; height: number; minY: number; rest: number[]; noUv: boolean };
+
+/** Exporte beginnen oft bei Bild 1 statt bei 0: Zyklus auf 0 schieben, sonst stockt die Schleife kurz. */
+function clipFromZero(clip: THREE.AnimationClip) {
+  const start = Math.min(...clip.tracks.map((t) => t.times[0]));
+  if (start > 0) {
+    // neue Arrays: der Loader teilt die Zeit-Arrays zwischen Spuren, shift() würde sie mehrfach verschieben
+    for (const t of clip.tracks) t.times = Float32Array.from(t.times, (v) => v - start);
+    clip.resetDuration();
+  }
+  return clip;
+}
+
+async function loadExtraClip(url: string | undefined, id: string, what: string) {
+  if (!url) return null;
+  try {
+    const gltf = await loadGlbOffline(url);
+    const clip = gltf.animations[0];
+    if (!clip) throw new Error("keine Animation in der Datei");
+    return clipFromZero(clip);
+  } catch (err) {
+    console.warn(`${what}-Animation für Champion ${id} fehlt, nutze die einfache Variante:`, err);
+    return null;
+  }
+}
 const rigAssets = new Map<string, RigAsset>();
 
-export type ChampRig = { mixer: THREE.AnimationMixer; action: THREE.AnimationAction; t: number; speed: number; rest: number[]; dur: number };
+export type ChampRig = {
+  mixer: THREE.AnimationMixer;
+  action: THREE.AnimationAction;
+  t: number;
+  speed: number;
+  rest: number[];
+  dur: number;
+  model: THREE.Object3D;
+  bones: RigBones | null;
+  /** laufender Schlag: Fortschritt 0..1, < 0 = keiner */
+  atkT: number;
+  /** abwechselnd rechte (1) und linke (-1) Klinge */
+  atkSide: number;
+  lastAtk: number;
+  /** Sterbeanimation (falls vorhanden) und Zeit seit dem Tod */
+  death: THREE.AnimationAction | null;
+  deathT: number;
+};
+
+type RigBones = { hips: THREE.Object3D; spine: THREE.Object3D; chest: THREE.Object3D; arm: [THREE.Object3D, THREE.Object3D]; fore: [THREE.Object3D, THREE.Object3D]; hand: [THREE.Object3D, THREE.Object3D] };
+
+function findRigBones(model: THREE.Object3D): RigBones | null {
+  const b = (n: string) => model.getObjectByName(`mixamorig${n}`) ?? model.getObjectByName(`mixamorig:${n}`);
+  const hips = b("Hips");
+  const spine = b("Spine1");
+  const chest = b("Spine2");
+  const armR = b("RightArm");
+  const armL = b("LeftArm");
+  const foreR = b("RightForeArm");
+  const foreL = b("LeftForeArm");
+  const handR = b("RightHand");
+  const handL = b("LeftHand");
+  if (!hips || !spine || !chest || !armR || !armL || !foreR || !foreL || !handR || !handL) return null;
+  return { hips, spine, chest, arm: [armR, armL], fore: [foreR, foreL], hand: [handR, handL] };
+}
+
+/** Dauer eines Schlags in Sekunden (unabhängig vom kurzen Angriffs-Zeitfenster der Spiellogik). */
+const SLASH_TIME = 0.42;
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
+const _qr = new THREE.Quaternion();
+const _e = new THREE.Euler();
+
+/** Dreht einen Knochen um Achsen im Raum der Figur (vorne +z, oben +y, links +x), zusätzlich zur Animation. */
+function rotateInRigSpace(bone: THREE.Object3D, root: THREE.Object3D, x: number, y: number, z: number) {
+  if (!x && !y && !z) return;
+  root.getWorldQuaternion(_qr);
+  bone.parent!.getWorldQuaternion(_qa);
+  _qa.premultiply(_qr.invert()); // Elternteil im Figurenraum
+  _qb.setFromEuler(_e.set(x, y, z, "YXZ"));
+  // Drehung im Figurenraum -> im Raum des Elternknochens
+  _qb.premultiply(_qa.clone().invert()).multiply(_qa);
+  bone.quaternion.premultiply(_qb);
+  bone.updateMatrixWorld(true);
+}
+
+const ease = (t: number) => t * t * (3 - 2 * t);
+/** Wert zwischen Schlüsselstellen [Zeit, Wert] (weich interpoliert). */
+function keys(t: number, k: [number, number][]) {
+  if (t <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) {
+    if (t <= k[i][0]) {
+      const u = (t - k[i - 1][0]) / (k[i][0] - k[i - 1][0]);
+      return k[i - 1][1] + (k[i][1] - k[i - 1][1]) * ease(u);
+    }
+  }
+  return k[k.length - 1][1];
+}
+
+/**
+ * Schlag mit dem Dolch: Ausholen (Oberkörper dreht zur Schlagseite, Arm hoch und zurück),
+ * schneller Hieb schräg nach vorn über den Körper, kurzes Nachschwingen und zurück in die Grundhaltung.
+ */
+export function applySlash(rig: ChampRig, p: number) {
+  const B = rig.bones;
+  if (!B) return;
+  const side = rig.atkSide; // 1 = rechte Hand, -1 = linke
+  const k = side > 0 ? 0 : 1;
+  const root = rig.model;
+  root.updateMatrixWorld(true);
+  // Zeitpunkte: 0..0.3 ausholen, 0.3..0.5 Hieb, 0.5..1 zurück
+  // Drehwinkel im Figurenraum: um x positiv = nach hinten/oben, um y positiv = zur linken Seite der Figur
+  const twist = keys(p, [[0, 0], [0.3, -0.45], [0.48, 0.5], [0.7, 0.3], [1, 0]]) * side;
+  const lean = keys(p, [[0, 0], [0.3, -0.06], [0.48, 0.25], [0.75, 0.1], [1, 0]]);
+  const raise = keys(p, [[0, 0], [0.3, 1.9], [0.48, -1.1], [0.7, -0.7], [1, 0]]);
+  const across = keys(p, [[0, 0], [0.3, -0.45], [0.48, 0.9], [0.7, 0.7], [1, 0]]) * side;
+  const bend = keys(p, [[0, 0], [0.3, -1.0], [0.48, 0.15], [0.7, 0.25], [1, 0]]);
+  const other = keys(p, [[0, 0], [0.3, -0.6], [0.48, 0.45], [1, 0]]);
+  rotateInRigSpace(B.spine, root, lean * 0.5, twist * 0.5, 0);
+  rotateInRigSpace(B.chest, root, lean * 0.5, twist * 0.5, 0);
+  // Schlagarm: zum Ausholen hoch und zurück, beim Hieb nach vorn und quer über den Körper
+  rotateInRigSpace(B.arm[k], root, raise, across, 0);
+  rotateInRigSpace(B.fore[k], root, bend, 0, 0);
+  // anderer Arm schwingt zum Ausgleich gegen
+  rotateInRigSpace(B.arm[1 - k], root, other, 0, 0);
+}
 
 /** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
 export async function loadChampionModels() {
@@ -141,15 +263,10 @@ export async function loadChampionModels() {
       if (rigAssets.has(id)) return;
       try {
         const gltf = await loadGlbOffline(url);
-        const clip = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
-        if (!clip) throw new Error("keine Animation im Modell");
-        // Exporte beginnen oft bei Bild 1 statt bei 0: Zyklus auf 0 schieben, sonst stockt die Schleife kurz
-        const start = Math.min(...clip.tracks.map((t) => t.times[0]));
-        if (start > 0) {
-          // neue Arrays: der Loader teilt die Zeit-Arrays zwischen Spuren, shift() würde sie mehrfach verschieben
-          for (const t of clip.tracks) t.times = Float32Array.from(t.times, (v) => v - start);
-          clip.resetDuration();
-        }
+        const found = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
+        if (!found) throw new Error("keine Animation im Modell");
+        const clip = clipFromZero(found);
+        const death = await loadExtraClip(CHAMP_ANIMS[id]?.death, id, "Sterbe");
         gltf.scene.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(gltf.scene);
         let noUv = false;
@@ -158,7 +275,7 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, clip, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, clip, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
@@ -196,7 +313,24 @@ function restTimes(scene: THREE.Object3D, clip: THREE.AnimationClip) {
 }
 
 /** Läuft, solange sich der Champion bewegt; beim Anhalten gleitet die Animation sanft in die nächste ruhige Haltung. */
-export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: number) {
+export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: number, atk = 0, dead = false) {
+  if (rig.death) {
+    if (dead) {
+      // Sterbeanimation einmal abspielen und in der letzten Haltung liegen bleiben
+      rig.deathT += dt;
+      rig.action.setEffectiveWeight(0);
+      rig.death.setEffectiveWeight(1);
+      rig.death.time = Math.min(rig.deathT, rig.death.getClip().duration);
+      rig.mixer.update(0);
+      rig.atkT = -1;
+      return;
+    }
+    if (rig.deathT > 0) {
+      rig.deathT = 0;
+      rig.action.setEffectiveWeight(1);
+      rig.death.setEffectiveWeight(0);
+    }
+  }
   const target = moving ? Math.max(0.75, Math.min(1.4, (speed || RUN_REF_SPEED) / RUN_REF_SPEED)) : 0;
   rig.speed += (target - rig.speed) * Math.min(1, dt * (moving ? 10 : 7));
   if (moving || rig.speed > 0.2) {
@@ -209,6 +343,17 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
   }
   rig.action.time = rig.t;
   rig.mixer.update(0);
+  // neuer Angriff: Schlag starten (abwechselnd links und rechts)
+  if (atk > rig.lastAtk + 0.3) {
+    rig.atkT = 0;
+    rig.atkSide = -rig.atkSide;
+  }
+  rig.lastAtk = atk;
+  if (rig.atkT >= 0) {
+    rig.atkT += dt / SLASH_TIME;
+    if (rig.atkT >= 1) rig.atkT = -1;
+    else applySlash(rig, rig.atkT);
+  }
 }
 
 /**
@@ -265,7 +410,13 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   const mixer = new THREE.AnimationMixer(model);
   const action = mixer.clipAction(asset.clip);
   action.play();
-  const rig: ChampRig = { mixer, action, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration };
+  let death: THREE.AnimationAction | null = null;
+  if (asset.death) {
+    death = mixer.clipAction(asset.death);
+    death.play();
+    death.setEffectiveWeight(0);
+  }
+  const rig: ChampRig = { mixer, action, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model, bones: findRigBones(model), atkT: -1, atkSide: -1, lastAtk: 0, death, deathT: 0 };
   updateRig(rig, false, 0, 0);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
   const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];

@@ -197,6 +197,13 @@ export class View {
       m.ring.visible = c.alive;
       if (!c.alive) {
         v.deathT += dt;
+        if (m.rig?.death) {
+          // eigene Sterbeanimation statt Umkippen
+          updateRig(m.rig, false, 0, dt, 0, true);
+          v.shield.visible = false;
+          if (v.beam) v.beam.visible = false;
+          continue;
+        }
         m.body.rotation.x = Math.max(-Math.PI / 2, -v.deathT * 5);
         m.body.position.y = Math.max(-0.8, -Math.max(0, v.deathT - 1.5) * 0.6) + 0.3 * Math.min(1, v.deathT * 5);
         v.shield.visible = false;
@@ -208,7 +215,7 @@ export class View {
       m.body.position.y = 0;
 
       // Laufen (Modelle mit Skelett: Laufanimation, sonst schwingende Glieder)
-      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt);
+      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt, c.anim.atk);
       if (c.anim.moving) c.anim.walk += dt * (c.anim.speed || 6) * 1.5;
       else c.anim.walk *= 0.85;
       const sw = c.anim.moving ? Math.sin(c.anim.walk) : 0;

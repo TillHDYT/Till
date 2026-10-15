@@ -87,7 +87,9 @@ Champions können statt der gebauten Figur ein Mixamo-Modell mit Skelett bekomme
 `src/game/models.ts`). Bisher: Kira (Assassinin) mit `src/assets/models/Assassine.glb`. Das Modell wird auf die
 Höhe der gebauten Figur skaliert (passt zu den Türmen), dreht sich in Laufrichtung und spielt beim Laufen die
 Animation `Run` in der Schleife (Tempo folgt der Laufgeschwindigkeit). Beim Anhalten gleitet die Animation in die
-nächste ruhige Haltung (Füße beieinander) und bleibt stehen. Fehlt einem Modell die UV-Abwicklung, können die
+nächste ruhige Haltung (Füße beieinander) und bleibt stehen. Bei jedem Angriff holt Kira mit einem Dolch aus
+und schlägt schräg über den Körper (abwechselnd links und rechts, als Zusatzbewegung auf die Knochen in `applySlash`).
+Stirbt sie, spielt die Sterbeanimation `Assassine_Death.glb` (aus `Standing React Death Right.fbx`). Fehlt einem Modell die UV-Abwicklung, können die
 eingebetteten Texturen nicht aufgelegt werden; dann bekommt es Farben aus dem `look` des Champions.
 
 Das GLB entsteht aus der Mixamo-FBX (`assets-src/Assassine_Running.fbx`). Ein Umweg über Assimp verliert die
@@ -97,7 +99,15 @@ UV-Koordinaten, deshalb der Weg über Blender. Die Vorwärtsbewegung der Hüfte 
 ```bash
 python assets-src/champion_fbx.py assets-src/Assassine_Running.fbx src/assets/models/Assassine.glb   # Blender (bpy)
 python3 assets-src/glb_textures.py src/assets/models/Assassine.glb 1024
+# weitere Animationen (gleiches Skelett) als kleines GLB nur mit Skelett und Animation:
+python assets-src/champion_anim.py "Standing React Death Right.fbx" src/assets/models/Assassine_Death.glb Death
 ```
+
+## Wegfindung
+
+Wände, die nur 1-3 Zellen dünn sind, öffnet `navgrid.ts` automatisch (sie wären im Gelände zu schmal für eine
+sichtbare Felskante, also unsichtbare Wände). Die Startbasis sperrt die Zellen unter Ruinen, Säulen und Statue;
+der Grundriss kommt aus dem Modell: `python3 assets-src/startbase/footprint.py src/assets/startbase.glb src/game/startbaseFootprint.ts`.
 
 ## 3D-Modell des Nexus
 
