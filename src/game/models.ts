@@ -11,6 +11,7 @@ import emblemUrl from "../assets/emblem.jpg";
 import guardianUrl from "../assets/guardian.glb";
 import guardianBlueUrl from "../assets/guardian_blue.jpg";
 import nexusUrl from "../assets/nexus.glb";
+import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -1236,8 +1237,91 @@ function emblemTexture(team: 0 | 1) {
   return t;
 }
 
+// ---------------- Startbasis aus dem 3D-Modell (assets-src/startbase.md -> startbase.glb) ----------------
+
+type StartBaseAsset = { model: THREE.Object3D; materials: [THREE.Material, THREE.Material] };
+let startBase: StartBaseAsset | null = null;
+/** Das Modell liegt mit der Plattform-Oberkante bei y = 1.37; so weit absenken, dass sie wie früher bei 0.42 liegt. */
+const START_BASE_SINK = 0.95;
+
+/** Lädt die Startbasis einmalig. Bei einem Fehler bleibt die gebaute Ersatz-Basis. */
+export async function loadStartBase(): Promise<boolean> {
+  if (startBase) return true;
+  let model: THREE.Object3D;
+  let blue: THREE.MeshStandardMaterial;
+  try {
+    const gltf = await loadGlbOffline(startBaseUrl);
+    model = gltf.scene;
+    const mesh = model.getObjectByName("Base")?.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
+    if (!mesh) throw new Error("Startbasis-GLB benötigt das Mesh Base");
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    if (!mat) throw new Error("Startbasis-Modell besitzt kein Material");
+    blue = mat as THREE.MeshStandardMaterial;
+  } catch (err) {
+    console.error("Startbasis-GLB konnte nicht geladen werden, nutze Ersatzmodell:", err);
+    return false;
+  }
+  if (blue.map) blue.map.anisotropy = 4;
+  // Das Modell ist blau (Banner, Runen). Für das rote Team die blauen Flächen rot färben.
+  const red = blue.clone();
+  try {
+    if (blue.map) red.map = withImage(blue.map, recolorBlueToRed(blue.map.image as CanvasImageSource & { width: number; height: number }));
+  } catch (err) {
+    console.warn("Umfärben der Startbasis nicht möglich, rote Basis bleibt blau:", err);
+  }
+  startBase = { model, materials: [blue, red] };
+  return true;
+}
+
+/** Startbasis aus dem Modell. Vorne (offene Seite mit Treppe) = +z, wie beim gebauten Ersatz. */
+function buildFountainModel(team: 0 | 1, asset: StartBaseAsset) {
+  const root = new THREE.Group();
+  const model = asset.model.clone(true);
+  model.position.y = -START_BASE_SINK;
+  model.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.material = asset.materials[team];
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  root.add(model);
+  // Heilring am Plattformrand
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(7.25, 0.07, 6, 64), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.06;
+  root.add(ring);
+  return root;
+}
+
+/** Färbt blaue Stoff- und Leuchtflächen rot, Stein, Moos und Gold bleiben wie sie sind. */
+function recolorBlueToRed(img: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) throw new Error("Kein 2D-Kontext");
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i];
+    const gr = p[i + 1];
+    const b = p[i + 2];
+    // Anteil "Blau", weich ausgeblendet, damit graublauer Stein kaum betroffen ist
+    const k = Math.min(1, (b - Math.max(r, gr) * 1.25) / (b * 0.3 + 1));
+    if (k <= 0) continue;
+    p[i] = r + (Math.min(255, b * 1.05) - r) * k;
+    p[i + 1] = gr + (Math.min(gr, r) * 0.6 - gr) * k;
+    p[i + 2] = b + (r * 0.8 - b) * k;
+  }
+  g.putImageData(data, 0, 0);
+  return c;
+}
+
 /** Startbasis: runde Plattform mit Stufen, Ruinenbögen mit Efeu, Wächterstatue. Vorne = +z. */
 export function buildFountain(team: 0 | 1) {
+  if (startBase) return buildFountainModel(team, startBase);
   const root = new THREE.Group();
   const col = TEAM_GLOW[team];
   const stone = 0x6e8a84;
