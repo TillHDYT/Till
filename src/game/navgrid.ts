@@ -14,6 +14,7 @@ import {
   type LaneId,
   type V2,
 } from "./mapdata";
+import { START_BASE_FOOTPRINT } from "./startbaseFootprint";
 
 // Deterministischer Zufall, damit die Karte bei jedem Start gleich aussieht.
 export function rng(seed: number) {
@@ -201,6 +202,8 @@ export class NavGrid {
   readonly base: Int8Array;
   /** -1 kein Busch, sonst Busch-Index. */
   readonly brush: Int16Array;
+  /** Zellen, die durch Gebäude-Hindernisse (Startbasis) gesperrt sind. */
+  readonly obstacleCells: number;
   /** Geglätteter Abstand zur Waldkante (> 0 offen, < 0 Wald), gegen Treppenstufen an den Kanten. */
   readonly sdf: Float32Array;
   /** Höhenpunkte pro Einheit. */
@@ -280,6 +283,18 @@ export class NavGrid {
       }
     }
 
+    // Dünne Wände (bis 3 Zellen) entfernen: sie sind im Gelände zu schmal für eine sichtbare Felskante und
+    // wären unsichtbare Wände. Morphologisches Schließen der offenen Fläche (erweitern, dann wieder schrumpfen).
+    {
+      const seed = new Uint8Array(n * n);
+      for (let i = 0; i < n * n; i++) seed[i] = this.walk[i];
+      const toOpen = edt(seed, n);
+      const grown = new Uint8Array(n * n);
+      for (let i = 0; i < n * n; i++) grown[i] = toOpen[i] <= THIN_WALL ? 0 : 1;
+      const toWall = edt(grown, n);
+      for (let i = 0; i < n * n; i++) if (!this.walk[i] && toWall[i] > THIN_WALL) this.walk[i] = 1;
+    }
+
     // Büsche: begehbar, merken pro Zelle.
     BRUSHES.forEach((b, bi) => {
       const r = Math.ceil(b.r + 1);
@@ -299,12 +314,50 @@ export class NavGrid {
       wallSeed[i] = this.walk[i] ? 0 : 1;
       openSeed[i] = this.walk[i] ? 1 : 0;
     }
-    this.clear = edt(wallSeed, n);
+    // Gelände (Felsen, Wald) bestimmt die Optik; Hindernisse wie die Ruinen der Startbasis kommen danach dazu
+    const terrainClear = edt(wallSeed, n);
     this.wallDepth = edt(openSeed, n);
 
     const sd = new Float32Array(n * n);
-    for (let i = 0; i < n * n; i++) sd[i] = this.walk[i] ? this.clear[i] - 0.5 : 0.5 - this.wallDepth[i];
+    for (let i = 0; i < n * n; i++) sd[i] = this.walk[i] ? terrainClear[i] - 0.5 : 0.5 - this.wallDepth[i];
     this.sdf = blur(blur(sd, n), n);
+
+    // Startbasis: Ruinen, Säulen und Statue sind fest, Plattform und offene Vorderseite bleiben frei
+    const fp = START_BASE_FOOTPRINT;
+    const fpN = fp.rows.length;
+    const solidAt = (mx: number, mz: number) => {
+      const c = Math.floor((mx + fp.half) / fp.res);
+      const r = Math.floor((mz + fp.half) / fp.res);
+      return r >= 0 && c >= 0 && r < fpN && c < fpN && fp.rows[r].charCodeAt(c) === 49;
+    };
+    let blocked = 0;
+    for (const f of FOUNTAIN) {
+      // gleiche Drehung wie das Modell in der Szene (vorne zur Kartenmitte)
+      const rot = Math.atan2(MAP / 2 - f.x, MAP / 2 - f.z);
+      const co = Math.cos(rot);
+      const si = Math.sin(rot);
+      const R = Math.ceil(fp.half) + 1;
+      for (let z = Math.floor(f.z) - R; z <= Math.floor(f.z) + R; z++) {
+        for (let x = Math.floor(f.x) - R; x <= Math.floor(f.x) + R; x++) {
+          if (x < 0 || z < 0 || x >= n || z >= n) continue;
+          const i = z * n + x;
+          if (!this.walk[i]) continue;
+          let hits = 0;
+          for (const [ox, oz] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
+            const dx = x + ox - f.x;
+            const dz = z + oz - f.z;
+            if (solidAt(dx * co - dz * si, dx * si + dz * co)) hits++;
+          }
+          if (hits >= 2) {
+            this.walk[i] = 0;
+            wallSeed[i] = 1;
+            blocked++;
+          }
+        }
+      }
+    }
+    this.obstacleCells = blocked;
+    this.clear = blocked ? edt(wallSeed, n) : terrainClear;
 
     // Höhen: weiche Felskanten statt Zellstufen
     const R = this.hres;
@@ -321,7 +374,7 @@ export class NavGrid {
         let open = cellSample(baseArr, n, px, pz) * 0.12 - cellSample(this.river, n, px, pz) * 1.15;
         open += (fbm(px * 0.12 + 50, pz * 0.12) - 0.5) * 0.25 * (1 - lane);
         for (const f of FOUNTAIN) open = Math.max(open, 0.42 * smooth(7.9, 7.0, Math.hypot(px - f.x, pz - f.z)));
-        const d = Math.max(0, -s);
+        const d = Math.max(0, -(s - CLIFF_SHIFT));
         const k = smooth(0, 1.5, d);
         const wall = 2.2 + Math.min(d, 6) * 0.3 + fbm(px * 0.3, pz * 0.3) * 1.0;
         h[z * (N + 1) + x] = open + (wall - open) * k;
@@ -509,6 +562,11 @@ export class NavGrid {
     return out;
   }
 }
+
+/** Wände bis zu dieser halben Breite (in Zellen) gelten als zu dünn und werden geöffnet. */
+const THIN_WALL = 1.5;
+/** Felskante so weit nach außen schieben, dass sie dort ansteigt, wo die begehbare Fläche endet (keine unsichtbaren Wände). */
+const CLIFF_SHIFT = 0.45;
 
 function smooth(e0: number, e1: number, x: number) {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));

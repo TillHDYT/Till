@@ -246,7 +246,9 @@ export class World {
           used.add(def.id);
         }
         const sp = SPAWN[team];
-        const c = new Champion(def, team, sp.x + (i - 2) * 1.6, sp.z - (i - 2) * 1.6 * (team === 0 ? 1 : -1), role, isPlayer ? "Du" : BOT_NAMES[team][i]);
+        // Startreihe von der Plattform zur Kartenmitte, für Rot gespiegelt (vorher quer, ein Bot stand dann in den Ruinen)
+        const side = team === 0 ? 1 : -1;
+        const c = new Champion(def, team, sp.x + (i - 2) * 1.6 * side, sp.z - (i - 2) * 1.6 * side, role, isPlayer ? "Du" : BOT_NAMES[team][i]);
         c.isPlayer = isPlayer;
         c.facing = team === 0 ? Math.PI * 0.75 : -Math.PI * 0.25;
         this.champs.push(c);
