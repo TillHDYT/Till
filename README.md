@@ -84,7 +84,8 @@ Das frühere, per Skript gebaute Wächtermodell (`assets-src/guardian.py`) bleib
 ## Champion-Modelle (Skelett + Animation)
 
 Champions können statt der gebauten Figur ein Mixamo-Modell mit Skelett bekommen (`CHAMP_MODELS` in
-`src/game/models.ts`). Bisher: Kira (Assassinin) mit `src/assets/models/Assassine.glb`. Das Modell wird auf die
+`src/game/models.ts`). Bisher: Kira (Assassinin) mit `src/assets/models/Assassine.glb` und Thorne (Tank) mit
+`src/assets/models/Tank.glb`. Das Modell wird auf die
 Höhe der gebauten Figur skaliert (passt zu den Türmen) und dreht sich in Laufrichtung. Die Animationen
 (`CHAMP_ANIMS`, alle mit demselben Skelett):
 
@@ -94,6 +95,7 @@ Höhe der gebauten Figur skaliert (passt zu den Türmen) und dreht sich in Laufr
 | Stehen (Schleife) | `Assassine_Idle.glb` | `Standing Idle.fbx` |
 | Schlag (Standardangriff) | `Assassine_Attack.glb` | `Boxing.fbx` |
 | Tod | `Assassine_Death.glb` | `Standing React Death Right.fbx` |
+| Tank: Laufen / Stehen / Schlag / Tod | `Tank.glb`, `Tank_Idle.glb`, `Tank_Attack.glb`, `Tank_Death.glb` | `Tank Lauf/Stehend/Schlag/Todes Animation.fbx` |
 
 Stehen und Laufen werden weich überblendet; während eines Schlags liegt die Schlaganimation darüber und blendet
 danach wieder ins Stehen aus. Fehlt eine dieser Dateien, steht in der Browser-Konsole genau welche, und es wird
@@ -122,6 +124,11 @@ python3 assets-src/glb_textures.py src/assets/models/Assassine.glb 1024
 python assets-src/champion_anim.py "Standing React Death Right.fbx" src/assets/models/Assassine_Death.glb Death
 python assets-src/champion_anim.py "Standing Idle.fbx" src/assets/models/Assassine_Idle.glb Idle
 python assets-src/champion_anim.py Boxing.fbx src/assets/models/Assassine_Attack.glb Attack --treffer   # misst den Treffer
+# Tank genauso:
+python assets-src/champion_fbx.py "Tank Lauf Animation.fbx" src/assets/models/Tank.glb && python3 assets-src/glb_textures.py src/assets/models/Tank.glb 1024
+python assets-src/champion_anim.py "Tank Stehend Animation.fbx" src/assets/models/Tank_Idle.glb Idle
+python assets-src/champion_anim.py "Tank Schlag Animation.fbx" src/assets/models/Tank_Attack.glb Attack --treffer
+python assets-src/champion_anim.py "Tank Todes Animation.fbx" src/assets/models/Tank_Death.glb Death
 ```
 
 ## Wegfindung

@@ -1,12 +1,12 @@
 // Prüft Kiras Schlag in der Spiellogik ohne Grafik: Schaden erst am Trefferzeitpunkt der Schlaganimation,
-// genau einmal pro Schlag, nur bei gültigem Ziel in Reichweite. Aufruf: npx tsx scripts/swing-test.ts
+// genau einmal pro Schlag, nur bei gültigem Ziel in Reichweite. Aufruf: npx tsx scripts/swing-test.ts [kira|thorne]
 import { CHAMPIONS } from "../src/game/champions";
 import { NavGrid } from "../src/game/navgrid";
 import type { Champion, Unit } from "../src/game/units";
 import { World, swingRate } from "../src/game/world";
 
 const grid = new NavGrid();
-const KIRA = CHAMPIONS.find((c) => c.id === "kira")!;
+const KIRA = CHAMPIONS.find((c) => c.id === (process.argv[2] ?? "kira"))!;
 const SW = KIRA.swing!;
 const DT = 1 / 60;
 let failed = 0;
@@ -17,7 +17,7 @@ const check = (name: string, ok: boolean, info = "") => {
 
 /** Neue Welt: Kira (Spielerin, ohne Bot) und ein reglos stehender Gegner in der Kartenmitte. */
 function setup(edge = 1.5) {
-  const w = new World(grid, { playerChamp: "kira", playerRole: "jungle", difficulty: "normal" }, () => ({ think() {} }));
+  const w = new World(grid, { playerChamp: KIRA.id, playerRole: KIRA.role, difficulty: "normal" }, () => ({ think() {} }));
   const k = w.player;
   const foe = w.champs.find((c) => c.team === 1 && c.role === "top")!;
   k.x = 100;
@@ -171,8 +171,8 @@ for (const bonus of [0, 45, 65, 150]) {
   );
 }
 
-// Tod, Sprung (E) oder gezielte Fähigkeit (Q) während des Ausholens: Schlag fällt aus
-{
+// Sprung (Kiras E) während des Ausholens: Schlag fällt aus
+if (KIRA.id === "kira") {
   const { w, k, foe } = setup();
   k.ranks[2] = 1;
   k.order = { type: "attack", target: foe };

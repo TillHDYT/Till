@@ -420,7 +420,7 @@ export const CHAMPIONS: ChampDef[] = [
     growth: { hp: 92, mana: 40, ad: 3.5, armor: 4, mr: 1.6, as: 3 },
     levelOrder: [3, 0, 2, 1],
     build: ["boots", "cleaver", "bloodthirster", "infinity", "sunfire", "spiritcloak"],
-    look: { body: 0x2a1c3c, accent: 0xb061ff, skin: 0xe0bfa0, hair: 0x15101e, weapon: "daggers", bulk: 0.95, cape: 0x45206e },
+    look: { body: 0x2a1c3c, accent: 0xb061ff, skin: 0xe0bfa0, hair: 0x15101e, weapon: "daggers", bulk: 1.08, cape: 0x45206e },
     // Boxing.fbx: 50 Bilder bei 30 fps; die rechte Faust ist bei Bild 16,5 am weitesten vorne (gemessen mit
     // assets-src/champion_anim.py --treffer). Hier anpassen, falls der Treffer früher oder später sitzen soll.
     swing: { clip: 50 / 30, hit: 15.5 / 30 },
@@ -522,6 +522,9 @@ export const CHAMPIONS: ChampDef[] = [
     levelOrder: [3, 0, 2, 1],
     build: ["boots", "sunfire", "spiritcloak", "warmog", "thornmail", "timestaff"],
     look: { body: 0x5c6670, accent: 0x7fd27a, skin: 0x9a8a78, hair: 0x2c3a2a, weapon: "hammer", bulk: 1.3, cape: 0x2f4a2c },
+    // Tank Schlag Animation.fbx: 73 Bilder bei 60 fps; die linke Faust ist im Haken bei Bild 21,85 am weitesten vorne
+    // (gemessen mit assets-src/champion_anim.py --treffer). Hier anpassen, falls der Treffer früher oder später sitzen soll.
+    swing: { clip: 73 / 60, hit: 20.85 / 60 },
     abilities: [
       {
         name: "Kettenhaken",

@@ -36,21 +36,24 @@ print(f"Dauer {(f1 - f0) / fps:.3f} s ({f1 - f0} Bilder bei {fps:g} fps)")
 print(f"Hüfte: Ende - Anfang {(h1 - h0).length * 100:.1f} cm, weiteste Auslenkung {far * 100:.1f} cm")
 
 if HIT:
-    # vorne ist bei Mixamo -y (Blender), im Spiel +z. Gemessen wird die Faust (Fingerwurzel) beider Hände.
+    # Treffer = die Faust ist am weitesten vorne, während sie schnell schwingt (Haken und Geraden gleichermaßen).
+    # vorne ist bei Mixamo -y (Blender), im Spiel +z; gemessen wird die Fingerwurzel, sonst das Handgelenk.
     best = None
     for hand in ("Right", "Left"):
-        bone = f"mixamorig:{hand}HandMiddle1"
-        rest = -pos(bone, f0).y
-        f = float(f0)
-        while f <= f1:
-            reach = -pos(bone, f).y - rest
-            if best is None or reach > best[0]:
-                best = (reach, f, hand)
-            f += 0.05
+        names = [f"mixamorig:{hand}HandMiddle1", f"mixamorig:{hand}HandIndex1", f"mixamorig:{hand}Hand"]
+        bone = next(n for n in names if n in arm.pose.bones)
+        steps = [f0 + i * 0.05 for i in range(int((f1 - f0) / 0.05) + 1)]
+        pts = [pos(bone, f).copy() for f in steps]
+        speed = [(pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).xy.length for i in range(len(pts))]
+        vmax = max(speed)
+        for f, pt, v in zip(steps, pts, speed):
+            fwd = -(pt.y - h0.y)
+            if v > 0.5 * vmax and (best is None or fwd > best[0]):
+                best = (fwd, f, hand)
     reach, frame, hand = best
     t = (frame - f0) / fps
     dur = (f1 - f0) / fps
-    print(f"TREFFER: {hand} Faust am weitesten vorne bei Bild {frame:.2f} = {t:.3f} s von {dur:.3f} s ({t / dur:.3f}), {reach * 100:.0f} cm vor der Ausgangshaltung")
+    print(f"TREFFER: {hand} Faust am weitesten vorne im Schwung bei Bild {frame:.2f} = {t:.3f} s von {dur:.3f} s ({t / dur:.3f}), {reach * 100:.0f} cm vor der Hüfte")
 
 # nur Skelett und Animation exportieren, Mesh und Texturen bringt schon das Champion-Modell mit
 for o in list(bpy.context.scene.objects):

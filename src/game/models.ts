@@ -16,6 +16,10 @@ import assassinUrl from "../assets/models/Assassine.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
 import assassinAttackUrl from "../assets/models/Assassine_Attack.glb";
+import tankUrl from "../assets/models/Tank.glb";
+import tankIdleUrl from "../assets/models/Tank_Idle.glb";
+import tankAttackUrl from "../assets/models/Tank_Attack.glb";
+import tankDeathUrl from "../assets/models/Tank_Death.glb";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -128,7 +132,7 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 type AnimSrc = { url: string; file: string };
 const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; death?: AnimSrc }> = {
@@ -137,12 +141,18 @@ const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; death?: An
     attack: { url: assassinAttackUrl, file: "src/assets/models/Assassine_Attack.glb (aus Boxing.fbx)" },
     death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)" },
   },
+  thorne: {
+    idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
+    attack: { url: tankAttackUrl, file: "src/assets/models/Tank_Attack.glb (aus Tank Schlag Animation.fbx)" },
+    death: { url: tankDeathUrl, file: "src/assets/models/Tank_Death.glb (aus Tank Todes Animation.fbx)" },
+  },
 };
-/** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Kiras Grundtempo). */
-const RUN_REF_SPEED = 7.2;
+/** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9 };
 
 type RigAsset = {
   scene: THREE.Object3D;
+  runRef: number;
   clip: THREE.AnimationClip;
   idle: THREE.AnimationClip | null;
   attack: THREE.AnimationClip | null;
@@ -181,8 +191,9 @@ const rigAssets = new Map<string, RigAsset>();
 
 export type ChampRig = {
   mixer: THREE.AnimationMixer;
-  /** Laufanimation, Zeit darin und Tempo */
+  /** Laufanimation, Zeit darin und Tempo (runRef: Laufgeschwindigkeit bei Originaltempo des Clips) */
   action: THREE.AnimationAction;
+  runRef: number;
   t: number;
   speed: number;
   rest: number[];
@@ -225,7 +236,7 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, clip, idle, attack, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
@@ -280,7 +291,7 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
     return;
   }
   rig.deathT = 0;
-  const target = moving ? Math.max(0.75, Math.min(1.4, (speed || RUN_REF_SPEED) / RUN_REF_SPEED)) : 0;
+  const target = moving ? Math.max(0.75, Math.min(1.4, (speed || rig.runRef) / rig.runRef)) : 0;
   rig.speed += (target - rig.speed) * Math.min(1, dt * (moving ? 10 : 7));
   if (rig.idle) {
     rig.runW += ((moving ? 1 : 0) - rig.runW) * Math.min(1, dt * 10);
@@ -382,7 +393,7 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   const idle = play(asset.idle, 0);
   const attack = play(asset.attack, 0);
   const death = play(asset.death, 0);
-  const rig: ChampRig = { mixer, action, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model, idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, death, deathT: 0 };
+  const rig: ChampRig = { mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model, idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, death, deathT: 0 };
   updateRig(rig, false, 0, 0);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
   const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
