@@ -85,12 +85,31 @@ Das frühere, per Skript gebaute Wächtermodell (`assets-src/guardian.py`) bleib
 
 Champions können statt der gebauten Figur ein Mixamo-Modell mit Skelett bekommen (`CHAMP_MODELS` in
 `src/game/models.ts`). Bisher: Kira (Assassinin) mit `src/assets/models/Assassine.glb`. Das Modell wird auf die
-Höhe der gebauten Figur skaliert (passt zu den Türmen), dreht sich in Laufrichtung und spielt beim Laufen die
-Animation `Run` in der Schleife (Tempo folgt der Laufgeschwindigkeit). Beim Anhalten gleitet die Animation in die
-nächste ruhige Haltung (Füße beieinander) und bleibt stehen. Bei jedem Angriff holt Kira mit einem Dolch aus
-und schlägt schräg über den Körper (abwechselnd links und rechts, als Zusatzbewegung auf die Knochen in `applySlash`).
-Stirbt sie, spielt die Sterbeanimation `Assassine_Death.glb` (aus `Standing React Death Right.fbx`). Fehlt einem Modell die UV-Abwicklung, können die
-eingebetteten Texturen nicht aufgelegt werden; dann bekommt es Farben aus dem `look` des Champions.
+Höhe der gebauten Figur skaliert (passt zu den Türmen) und dreht sich in Laufrichtung. Die Animationen
+(`CHAMP_ANIMS`, alle mit demselben Skelett):
+
+| Zustand | Datei | Quelle |
+|---|---|---|
+| Laufen (Schleife, Tempo folgt der Laufgeschwindigkeit) | im Modell, Clip `Run` | `assets-src/Assassine_Running.fbx` |
+| Stehen (Schleife) | `Assassine_Idle.glb` | `Standing Idle.fbx` |
+| Schlag (Standardangriff) | `Assassine_Attack.glb` | `Boxing.fbx` |
+| Tod | `Assassine_Death.glb` | `Standing React Death Right.fbx` |
+
+Stehen und Laufen werden weich überblendet; während eines Schlags liegt die Schlaganimation darüber und blendet
+danach wieder ins Stehen aus. Fehlt eine dieser Dateien, steht in der Browser-Konsole genau welche, und es wird
+nichts dazuerfunden. Fehlt einem Modell die UV-Abwicklung, können die eingebetteten Texturen nicht aufgelegt
+werden; dann bekommt es Farben aus dem `look` des Champions.
+
+**Schaden zum Treffer der Schlaganimation:** Kira hat in `src/game/champions.ts` den Eintrag
+`swing: { clip: 50 / 30, hit: 15.5 / 30 }` (Länge von Boxing.fbx und Zeitpunkt, an dem die rechte Faust am
+weitesten vorne ist; gemessen mit `champion_anim.py --treffer`). Ablauf in `World` (`src/game/world.ts`):
+`basicAttack` startet den Schlag (Ausholen, Kira bleibt stehen, noch kein Schaden), `updateSwing` löst am
+Trefferzeitpunkt genau einmal die Trefferprüfung aus (Ziel noch angreifbar, höchstens `SWING_REACH` außerhalb der
+Reichweite, vor Kira) und gibt den Schaden über den bisherigen Weg (`championHit` -> `damage`), danach folgt die
+Erholung bis zum Ende des Clips. Die Animation bekommt den Fortschritt des Schlags (`anim.swing`, 0..1) und setzt
+daraus die Zeit im Clip, darum sitzt der sichtbare Treffer auch bei höherem Angriffstempo auf dem Schaden
+(Abspieltempo `swingRate`). Soll der Treffer früher oder später kommen: `hit` ändern.
+Prüfen ohne Grafik: `npm run swing-test`.
 
 Das GLB entsteht aus der Mixamo-FBX (`assets-src/Assassine_Running.fbx`). Ein Umweg über Assimp verliert die
 UV-Koordinaten, deshalb der Weg über Blender. Die Vorwärtsbewegung der Hüfte wird dabei herausgerechnet
@@ -101,6 +120,8 @@ python assets-src/champion_fbx.py assets-src/Assassine_Running.fbx src/assets/mo
 python3 assets-src/glb_textures.py src/assets/models/Assassine.glb 1024
 # weitere Animationen (gleiches Skelett) als kleines GLB nur mit Skelett und Animation:
 python assets-src/champion_anim.py "Standing React Death Right.fbx" src/assets/models/Assassine_Death.glb Death
+python assets-src/champion_anim.py "Standing Idle.fbx" src/assets/models/Assassine_Idle.glb Idle
+python assets-src/champion_anim.py Boxing.fbx src/assets/models/Assassine_Attack.glb Attack --treffer   # misst den Treffer
 ```
 
 ## Wegfindung

@@ -45,6 +45,12 @@ export type ChampDef = {
   build: string[];
   look: Look;
   color: string;
+  /**
+   * Nahkampf mit eigener Schlaganimation: Länge des Clips und Trefferzeitpunkt darin (Sekunden bei
+   * Originaltempo). Der Schaden kommt erst am Trefferzeitpunkt, nicht beim Start des Angriffs; bei höherem
+   * Angriffstempo laufen Animation und Trefferzeit gemeinsam schneller (siehe World.basicAttack).
+   */
+  swing?: { clip: number; hit: number };
 };
 
 const r4 = (a: number[], rank: number) => a[Math.max(0, Math.min(a.length - 1, rank - 1))];
@@ -415,6 +421,9 @@ export const CHAMPIONS: ChampDef[] = [
     levelOrder: [3, 0, 2, 1],
     build: ["boots", "cleaver", "bloodthirster", "infinity", "sunfire", "spiritcloak"],
     look: { body: 0x2a1c3c, accent: 0xb061ff, skin: 0xe0bfa0, hair: 0x15101e, weapon: "daggers", bulk: 0.95, cape: 0x45206e },
+    // Boxing.fbx: 50 Bilder bei 30 fps; die rechte Faust ist bei Bild 16,5 am weitesten vorne (gemessen mit
+    // assets-src/champion_anim.py --treffer). Hier anpassen, falls der Treffer früher oder später sitzen soll.
+    swing: { clip: 50 / 30, hit: 15.5 / 30 },
     abilities: [
       {
         name: "Dolchwurf",

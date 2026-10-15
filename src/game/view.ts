@@ -199,7 +199,7 @@ export class View {
         v.deathT += dt;
         if (m.rig?.death) {
           // eigene Sterbeanimation statt Umkippen
-          updateRig(m.rig, false, 0, dt, 0, true);
+          updateRig(m.rig, false, 0, dt, -1, true);
           v.shield.visible = false;
           if (v.beam) v.beam.visible = false;
           continue;
@@ -214,8 +214,8 @@ export class View {
       m.body.rotation.x = 0;
       m.body.position.y = 0;
 
-      // Laufen (Modelle mit Skelett: Laufanimation, sonst schwingende Glieder)
-      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt, c.anim.atk);
+      // Modelle mit Skelett: Stehen, Laufen und Schlag aus ihren Animationen, sonst schwingende Glieder
+      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt, c.anim.swing);
       if (c.anim.moving) c.anim.walk += dt * (c.anim.speed || 6) * 1.5;
       else c.anim.walk *= 0.85;
       const sw = c.anim.moving ? Math.sin(c.anim.walk) : 0;

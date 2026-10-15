@@ -82,8 +82,8 @@ export class Unit {
   dash: Dash | null = null;
   vis: [boolean, boolean] = [true, true];
   revealUntil = 0;
-  /** Für die Darstellung. */
-  anim = { atk: 0, cast: 0, hit: 0, moving: false, speed: 0, walk: 0 };
+  /** Für die Darstellung. swing: Fortschritt 0..1 des laufenden Schlags (Schlaganimation), -1 = keiner. */
+  anim = { atk: 0, cast: 0, hit: 0, moving: false, speed: 0, walk: 0, swing: -1 };
   vx = 0;
   vz = 0;
 
@@ -156,6 +156,9 @@ export type Order = { type: "none" } | { type: "move"; x: number; z: number } | 
 
 export type Empower = { until: number; dmg: number; type: DmgType };
 
+/** Laufender Schlag mit Schlaganimation (Zeiten in Spielzeit): Ausholen bis hitAt, dann Treffer, dann Erholung bis end. */
+export type Swing = { target: Unit; start: number; hitAt: number; end: number; hit: boolean };
+
 export class Champion extends Unit {
   def: ChampDef;
   level = 1;
@@ -183,6 +186,7 @@ export class Champion extends Unit {
   path: V2[] = [];
   order: Order = { type: "none" };
   empower: Empower | null = null;
+  swing: Swing | null = null;
   lastAttackChampAt = -99;
   name: string;
   redBuff = false;

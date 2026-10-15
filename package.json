@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "sim": "tsx scripts/sim.ts",
+    "swing-test": "tsx scripts/swing-test.ts",
     "map": "tsx scripts/map-preview.ts map.png",
     "single": "vite build && node scripts/artifact.mjs"
   },

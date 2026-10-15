@@ -141,6 +141,17 @@ export type MatchSetup = {
 };
 
 const ROLES: Role[] = ["top", "jungle", "mid", "bot", "support"];
+
+/** Schlag mit Schlaganimation: so weit darf sich das Ziel bis zum Treffer entfernen (Ausfallschritt im Clip). */
+const SWING_REACH = 0.75;
+/** ... und so weit seitlich der Blickrichtung stehen (Bogen des Hakens), in Bogenmaß. */
+const SWING_ARC = 1.2;
+
+/** Abspieltempo der Schlaganimation: schneller, sobald der ganze Clip nicht mehr in einen Angriff passt. */
+export function swingRate(sw: { clip: number }, as: number) {
+  return Math.max(1, sw.clip * as);
+}
+
 const BOT_NAMES = [
   ["Aster", "Brann", "Corvin", "Dalia", "Elko"],
   ["Fenra", "Gorm", "Hexa", "Isko", "Jorun"],
@@ -611,26 +622,16 @@ export class World {
 
     if (u instanceof Champion) {
       this.cancelRecall(u);
-      let dmg = u.stats.ad;
-      const crit = Math.random() * 100 < u.stats.crit;
-      if (crit) dmg *= 1.75;
-      const emp = u.empower && this.t < u.empower.until ? u.empower : null;
-      u.empower = null;
-      const apply = (t: Unit) => {
-        this.damage(u, t, dmg, "phys", { attack: true, crit });
-        if (emp) this.damage(u, t, emp.dmg, emp.type, { ability: true });
-        if (u.redBuff && t.alive) {
-          this.dots.push({ target: t, src: u, dps: 8 + u.level * 2, until: this.t + 3 });
-          this.slow(t, 0.1, 1.5);
-        }
-      };
-      if (u.def.ranged) {
-        this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff, apply, 1.5);
-      } else {
-        apply(target);
-        this.addFx({ type: "hit", x: target.x, z: target.z, color: crit ? 0xffe060 : 0xffffff });
-        this.events.push({ type: "sound", name: crit ? "crit" : "slash", x: target.x, z: target.z });
+      const sw = u.def.swing;
+      if (sw && !u.def.ranged) {
+        // Schlaganimation startet; Schaden erst am Trefferzeitpunkt (updateSwing). Bis dahin bleibt der Champion stehen.
+        const rate = swingRate(sw, u.stats.as);
+        u.swing = { target, start: this.t, hitAt: this.t + sw.hit / rate, end: this.t + sw.clip / rate, hit: false };
+        u.lockT = Math.max(u.lockT, sw.hit / rate);
+        u.anim.swing = 0;
+        return;
       }
+      this.championHit(u, target);
       return;
     }
 
@@ -679,6 +680,65 @@ export class World {
         this.addFx({ type: "hit", x: target.x, z: target.z, color: 0xffd0a0 });
       }
     }
+  }
+
+  /** Treffer eines Champion-Angriffs: Schaden, Krit, Verstärkung, rotes Buff (Fernkämpfer: per Geschoss). */
+  private championHit(u: Champion, target: Unit) {
+    let dmg = u.stats.ad;
+    const crit = Math.random() * 100 < u.stats.crit;
+    if (crit) dmg *= 1.75;
+    const emp = u.empower && this.t < u.empower.until ? u.empower : null;
+    u.empower = null;
+    const apply = (t: Unit) => {
+      this.damage(u, t, dmg, "phys", { attack: true, crit });
+      if (emp) this.damage(u, t, emp.dmg, emp.type, { ability: true });
+      if (u.redBuff && t.alive) {
+        this.dots.push({ target: t, src: u, dps: 8 + u.level * 2, until: this.t + 3 });
+        this.slow(t, 0.1, 1.5);
+      }
+    };
+    if (u.def.ranged) {
+      this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff, apply, 1.5);
+    } else {
+      apply(target);
+      this.addFx({ type: "hit", x: target.x, z: target.z, color: crit ? 0xffe060 : 0xffffff });
+      this.events.push({ type: "sound", name: crit ? "crit" : "slash", x: target.x, z: target.z });
+    }
+  }
+
+  /**
+   * Schlag mit Schlaganimation, pro Tick: Ausholen (kein Schaden) -> Trefferzeitpunkt (genau einmal prüfen, Schaden
+   * über championHit) -> Erholung bis zum Ende des Clips. Tod, Sprung oder Betäubung brechen ihn ab, Laufen die Erholung.
+   */
+  private updateSwing(c: Champion) {
+    const s = c.swing;
+    if (!s) return;
+    if (!c.alive || c.dash || c.stunned(this.t) || (s.hit && c.anim.moving)) return this.cancelSwing(c);
+    if (!s.hit && this.t >= s.hitAt) {
+      s.hit = true;
+      if (this.swingConnects(c, s.target)) this.championHit(c, s.target);
+    }
+    if (this.t >= s.end) return this.cancelSwing(c);
+    c.anim.swing = (this.t - s.start) / (s.end - s.start);
+  }
+
+  /** Schlag beenden; vor dem Treffer abgebrochen zählt er nicht als Angriff. */
+  cancelSwing(c: Champion) {
+    const s = c.swing;
+    if (!s) return;
+    if (!s.hit) {
+      c.atkCd = 0;
+      c.lockT = 0;
+    }
+    c.swing = null;
+    c.anim.swing = -1;
+  }
+
+  /** Trifft der Schlag am Trefferzeitpunkt? Ziel noch angreifbar, in Reichweite und vor dem Champion. */
+  private swingConnects(c: Champion, t: Unit) {
+    if (!this.attackable(t, c.team)) return false;
+    if (dist(c, t) - c.radius - t.radius > c.stats.range + SWING_REACH) return false;
+    return Math.cos(Math.atan2(t.x - c.x, t.z - c.z) - c.facing) >= Math.cos(SWING_ARC);
   }
 
   /** Weltposition des Turmkristalls. */
@@ -883,6 +943,8 @@ export class World {
     }
     c.mana -= cost;
     c.cds[slot] = c.cdFor(slot);
+    // gezielte Fähigkeit während des Ausholens: der Schlag fällt aus (er träfe sonst in die neue Richtung)
+    if (ab.targeting !== "self" && c.swing && !c.swing.hit) this.cancelSwing(c);
     if (ab.targeting !== "self" && (p.x !== c.x || p.z !== c.z)) c.facing = Math.atan2(p.x - c.x, p.z - c.z);
     this.cancelRecall(c);
     c.lockT = Math.max(c.lockT, 0.15);
@@ -946,6 +1008,7 @@ export class World {
     if (!c.alive || c.recallUntil > 0 || this.inFountain(c)) return;
     c.path = [];
     c.order = { type: "none" };
+    if (c.swing && !c.swing.hit) this.cancelSwing(c);
     c.recallStart = this.t;
     c.recallUntil = this.t + (c.hasBuff("baron") ? 3 : 6);
     this.addFx({ type: "recall", x: c.x, z: c.z, owner: c, dur: c.recallUntil - this.t });
@@ -1143,6 +1206,7 @@ export class World {
     c.anim.cast = Math.max(0, c.anim.cast - dt);
 
     if (t > 20) this.giveGoldQuiet(c, 3.2 * dt);
+    this.updateSwing(c);
 
     if (!c.alive) {
       if (t >= c.respawnAt) this.respawn(c);
