@@ -11,6 +11,8 @@ import emblemUrl from "../assets/emblem.jpg";
 import guardianUrl from "../assets/guardian.glb";
 import guardianBlueUrl from "../assets/guardian_blue.jpg";
 import nexusUrl from "../assets/nexus.glb";
+import assassinUrl from "../assets/models/Assassine.glb";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
@@ -115,9 +117,159 @@ export type ChampModel = {
   legR: THREE.Group;
   ring: THREE.Mesh;
   glow: THREE.Object3D | null;
+  /** nur bei Champions aus einem 3D-Modell mit Skelett */
+  rig?: ChampRig;
 };
 
-export function buildChampion(look: Look, ringColor: number): ChampModel {
+// ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
+
+/** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl };
+/** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Kiras Grundtempo). */
+const RUN_REF_SPEED = 7.2;
+
+type RigAsset = { scene: THREE.Object3D; clip: THREE.AnimationClip; height: number; minY: number; rest: number[]; noUv: boolean };
+const rigAssets = new Map<string, RigAsset>();
+
+export type ChampRig = { mixer: THREE.AnimationMixer; action: THREE.AnimationAction; t: number; speed: number; rest: number[]; dur: number };
+
+/** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
+export async function loadChampionModels() {
+  await Promise.all(
+    Object.entries(CHAMP_MODELS).map(async ([id, url]) => {
+      if (rigAssets.has(id)) return;
+      try {
+        const gltf = await loadGlbOffline(url);
+        const clip = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
+        if (!clip) throw new Error("keine Animation im Modell");
+        gltf.scene.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        let noUv = false;
+        gltf.scene.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh && !(o as THREE.Mesh).geometry.getAttribute("uv")) noUv = true;
+        });
+        if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
+        // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
+        rigAssets.set(id, { scene: gltf.scene, clip, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+      } catch (err) {
+        console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
+      }
+    }),
+  );
+}
+
+/** Zeitpunkte im Laufzyklus, an denen die Füße am dichtesten beieinander sind: dort wirkt das Stehenbleiben ruhig. */
+function restTimes(scene: THREE.Object3D, clip: THREE.AnimationClip) {
+  const footL = scene.getObjectByName("mixamorigLeftFoot") ?? scene.getObjectByName("mixamorig:LeftFoot");
+  const footR = scene.getObjectByName("mixamorigRightFoot") ?? scene.getObjectByName("mixamorig:RightFoot");
+  if (!footL || !footR) return [0];
+  const mixer = new THREE.AnimationMixer(scene);
+  const action = mixer.clipAction(clip);
+  action.play();
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const N = 48;
+  const gaps: number[] = [];
+  for (let i = 0; i < N; i++) {
+    action.time = (i / N) * clip.duration;
+    mixer.update(0);
+    scene.updateMatrixWorld(true);
+    footL.getWorldPosition(a);
+    footR.getWorldPosition(b);
+    gaps.push(Math.hypot(a.x - b.x, a.z - b.z));
+  }
+  action.stop();
+  mixer.uncacheRoot(scene);
+  const minima: number[] = [];
+  for (let i = 0; i < N; i++) {
+    if (gaps[i] <= gaps[(i + N - 1) % N] && gaps[i] <= gaps[(i + 1) % N]) minima.push((i / N) * clip.duration);
+  }
+  return minima.length ? minima : [0];
+}
+
+/** Läuft, solange sich der Champion bewegt; beim Anhalten gleitet die Animation sanft in die nächste ruhige Haltung. */
+export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: number) {
+  const target = moving ? Math.max(0.75, Math.min(1.4, (speed || RUN_REF_SPEED) / RUN_REF_SPEED)) : 0;
+  rig.speed += (target - rig.speed) * Math.min(1, dt * (moving ? 10 : 7));
+  if (moving || rig.speed > 0.2) {
+    rig.t = (rig.t + dt * rig.speed) % rig.dur;
+  } else {
+    // nächste ruhige Haltung vorwärts im Zyklus, nie rückwärts
+    let ahead = rig.dur;
+    for (const r of rig.rest) ahead = Math.min(ahead, (r - rig.t + rig.dur) % rig.dur);
+    rig.t = (rig.t + Math.min(ahead, Math.max(dt * 0.12, ahead * Math.min(1, dt * 5)))) % rig.dur;
+  }
+  rig.action.time = rig.t;
+  rig.mixer.update(0);
+}
+
+/**
+ * Ersatz-Materialien für Modelle ohne UV-Koordinaten (Texturen lassen sich dann nicht auflegen):
+ * Körper in einem aufgehellten Ton der Champion-Farbe, Stoffstreifen in der Akzentfarbe.
+ */
+const lookMats = new Map<string, THREE.Material[]>();
+function applyLookMaterials(model: THREE.Object3D, look: Look) {
+  const key = `${look.body}-${look.accent}`;
+  let mats = lookMats.get(key);
+  if (!mats) {
+    const body = new THREE.Color(look.body).lerp(new THREE.Color(0x8a8f9a), 0.45);
+    const accent = new THREE.Color(look.accent).multiplyScalar(0.8);
+    mats = [
+      new THREE.MeshStandardMaterial({ color: body, roughness: 0.75, metalness: 0.1 }),
+      new THREE.MeshStandardMaterial({ color: accent, roughness: 0.8, metalness: 0, side: THREE.DoubleSide }),
+    ];
+    lookMats.set(key, mats);
+  }
+  model.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const src = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial;
+    // der kleine, doppelseitige Teil (Stoffstreifen) bekommt die Akzentfarbe
+    m.material = src.side === THREE.DoubleSide || src.alphaTest > 0 ? mats![1] : mats![0];
+  });
+}
+
+function champRing(ringColor: number) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.95, 1.12, 32),
+    new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  ring.renderOrder = 3;
+  return ring;
+}
+
+function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): ChampModel {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const model = cloneSkinned(asset.scene);
+  // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
+  const k = (2.6 * look.bulk) / asset.height;
+  model.scale.multiplyScalar(k);
+  model.position.y = -asset.minY * k;
+  model.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+  });
+  if (asset.noUv) applyLookMaterials(model, look);
+  body.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const action = mixer.clipAction(asset.clip);
+  action.play();
+  const rig: ChampRig = { mixer, action, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration };
+  updateRig(rig, false, 0, 0);
+  // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
+  const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
+  body.add(...limbs);
+  const ring = champRing(ringColor);
+  root.add(ring);
+  return { root, body, armL: limbs[0], armR: limbs[1], legL: limbs[2], legR: limbs[3], ring, glow: null, rig };
+}
+
+export function buildChampion(look: Look, ringColor: number, id?: string): ChampModel {
+  const asset = id ? rigAssets.get(id) : undefined;
+  if (asset) return buildRigChampion(asset, look, ringColor);
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -236,13 +388,7 @@ export function buildChampion(look: Look, ringColor: number): ChampModel {
 
   body.scale.setScalar(b);
 
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.95, 1.12, 32),
-    new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.06;
-  ring.renderOrder = 3;
+  const ring = champRing(ringColor);
   root.add(ring);
 
   return { root, body, armL, armR, legL, legR, ring, glow };

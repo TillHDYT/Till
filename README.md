@@ -81,6 +81,15 @@ python3 assets-src/sentinel_blue.py src/assets/guardian.glb src/assets/guardian_
 
 Das frühere, per Skript gebaute Wächtermodell (`assets-src/guardian.py`) bleibt als Quelle erhalten.
 
+## Champion-Modelle (Skelett + Animation)
+
+Champions können statt der gebauten Figur ein Mixamo-Modell mit Skelett bekommen (`CHAMP_MODELS` in
+`src/game/models.ts`). Bisher: Kira (Assassinin) mit `src/assets/models/Assassine.glb`. Das Modell wird auf die
+Höhe der gebauten Figur skaliert (passt zu den Türmen), dreht sich in Laufrichtung und spielt beim Laufen die
+Animation `Run` in der Schleife (Tempo folgt der Laufgeschwindigkeit). Beim Anhalten gleitet die Animation in die
+nächste ruhige Haltung (Füße beieinander) und bleibt stehen. Fehlt einem Modell die UV-Abwicklung, können die
+eingebetteten Texturen nicht aufgelegt werden; dann bekommt es Farben aus dem `look` des Champions.
+
 ## 3D-Modell des Nexus
 
 Der Nexus ist ein Tripo-Modell (roter Kristall auf verziertem Sockel). `assets-src/nexus.py` setzt den

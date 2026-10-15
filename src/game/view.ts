@@ -7,6 +7,7 @@ import {
   TEAM_GLOW,
   buildBrazier,
   buildChampion,
+  updateRig,
   buildFountain,
   buildInhibitor,
   buildMonster,
@@ -130,7 +131,7 @@ export class View {
 
     for (const c of world.champs) {
       const ringColor = c.isPlayer ? 0x6dff5a : c.team === this.playerTeam ? 0x3fa0ff : 0xff3a30;
-      const model = buildChampion(c.def.look, ringColor);
+      const model = buildChampion(c.def.look, ringColor, c.def.id);
       scene.add(model.root);
       const shield = new THREE.Mesh(
         new THREE.SphereGeometry(1.3, 16, 12),
@@ -206,13 +207,15 @@ export class View {
       m.body.rotation.x = 0;
       m.body.position.y = 0;
 
-      // Laufen
+      // Laufen (Modelle mit Skelett: Laufanimation, sonst schwingende Glieder)
+      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt);
       if (c.anim.moving) c.anim.walk += dt * (c.anim.speed || 6) * 1.5;
       else c.anim.walk *= 0.85;
       const sw = c.anim.moving ? Math.sin(c.anim.walk) : 0;
       m.legL.rotation.x = sw * 0.75;
       m.legR.rotation.x = -sw * 0.75;
-      m.body.position.y = c.anim.moving ? Math.abs(Math.cos(c.anim.walk)) * 0.08 : Math.sin(this.time * 2 + c.id) * 0.02;
+      // Modelle mit Skelett federn schon in der Laufanimation, darum dort kein zusätzliches Wippen
+      m.body.position.y = c.anim.moving ? (m.rig ? 0 : Math.abs(Math.cos(c.anim.walk)) * 0.08) : Math.sin(this.time * 2 + c.id) * 0.02;
       let aL = -sw * 0.5;
       let aR = sw * 0.5;
       // Angriff

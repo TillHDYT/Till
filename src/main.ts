@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { Sfx } from "./game/audio";
 import { CHAMPIONS, ROLE_NAMES, type Role } from "./game/champions";
 import { Game, navGrid } from "./game/game";
-import { buildChampion, loadGuardian, loadNexus } from "./game/models";
+import { buildChampion, loadChampionModels, loadGuardian, loadNexus } from "./game/models";
 import type { Quality } from "./game/terrain";
 import type { Difficulty } from "./game/world";
 
@@ -32,6 +32,8 @@ function save(s: Settings) {
 }
 
 const settings = load();
+// 3D-Modelle (Türme, Nexus, Champions) gleich beim Start laden, damit Auswahlbilder und Spiel sie nutzen
+const modelsReady = Promise.all([loadGuardian(), loadNexus(), loadChampionModels()]);
 const params = new URLSearchParams(location.search);
 let portraits: Record<string, string> | null = null;
 
@@ -51,7 +53,7 @@ function renderPortraits(): Record<string, string> {
       const d = new THREE.DirectionalLight(0xffffff, 2.2);
       d.position.set(3, 5, 4);
       scene.add(d);
-      const m = buildChampion(c.look, 0xffffff);
+      const m = buildChampion(c.look, 0xffffff, c.id);
       m.ring.visible = false;
       m.body.rotation.y = 0.5;
       m.armR.rotation.x = -0.6;
@@ -88,7 +90,7 @@ function title() {
   app.querySelector("#play")!.addEventListener("click", () => {
     sfx.unlock();
     sfx.play("click");
-    select();
+    void modelsReady.then(() => select());
   });
   app.querySelector("#quality")!.addEventListener("click", (e) => {
     settings.quality = settings.quality === "high" ? "low" : "high";
@@ -187,8 +189,8 @@ function start() {
       () => {},
     );
   }
-  // Erst die 3D-Modelle (Türme, Nexus) laden, dann die Szene aufbauen
-  const ready = Promise.all([loadGuardian(), loadNexus()]);
+  // Erst die 3D-Modelle (Türme, Nexus, Champions) laden, dann die Szene aufbauen
+  const ready = modelsReady;
   setTimeout(async () => {
     await ready;
     navGrid();
