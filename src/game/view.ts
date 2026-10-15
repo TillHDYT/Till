@@ -162,6 +162,44 @@ export class View {
     }
   }
 
+  /** Markierung des anvisierten Gegners: pulsierender roter Ring am Boden und Pfeil über dem Kopf. */
+  private marker: { root: THREE.Group; ring: THREE.Mesh; arrow: THREE.Mesh } | null = null;
+
+  private updateTargetMarker() {
+    const p = this.world.player;
+    const t = p.alive ? (this.world.lockOf(p) ?? (p.order.type === "attack" ? p.order.target : null)) : null;
+    if (!this.marker) {
+      const root = new THREE.Group();
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.78, 1, 48),
+        new THREE.MeshBasicMaterial({ color: 0xff2a20, transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.renderOrder = 6;
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.8, 4), new THREE.MeshBasicMaterial({ color: 0xff3a2a, depthTest: false, transparent: true }));
+      arrow.rotation.x = Math.PI; // Spitze nach unten
+      arrow.renderOrder = 6;
+      root.add(ring, arrow);
+      this.scene.add(root);
+      this.marker = { root, ring, arrow };
+    }
+    const m = this.marker;
+    m.root.visible = !!t && this.isUnitShown(t);
+    if (!t || !m.root.visible) return;
+    const y = this.world.grid.groundAt(t.x, t.z);
+    const r = Math.max(1.1, t.radius + 0.45);
+    const pulse = 1 + Math.sin(this.time * 6) * 0.06;
+    m.root.position.set(t.x, y, t.z);
+    m.ring.position.y = 0.08;
+    m.ring.scale.setScalar(r * pulse);
+    m.ring.rotation.z = this.time * 1.5;
+    (m.ring.material as THREE.MeshBasicMaterial).opacity = 0.75 + Math.sin(this.time * 6) * 0.2;
+    // fest anvisiert (Rechtsklick/Antippen): zusätzlich Pfeil über dem Kopf
+    m.arrow.visible = p.lockTarget === t;
+    m.arrow.position.y = t.height + 0.9 + Math.sin(this.time * 4) * 0.15;
+    m.arrow.rotation.y = this.time * 2;
+  }
+
   private seen(u: Unit) {
     return u.team === this.playerTeam || u.vis[this.playerTeam];
   }
@@ -315,6 +353,7 @@ export class View {
 
     this.ground.update(dt);
     this.particles.update(dt);
+    this.updateTargetMarker();
     void camera;
   }
 

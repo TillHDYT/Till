@@ -395,7 +395,7 @@ export class World {
       traveled: 0,
       range: o.range,
       width: o.width,
-      homing: null,
+      homing: this.lockedFor(owner, o.range, o.champsOnly),
       visual: o.visual,
       color: o.color,
       hit: new Set(),
@@ -438,7 +438,17 @@ export class World {
     });
   }
 
+  /** Gegner, auf den ein Geschoss der gerade ausgelösten Fähigkeit zufliegen soll (anvisiert und in Reichweite). */
+  private lockedFor(owner: Unit, range: number, champsOnly?: boolean): Unit | null {
+    const l = this.castLock;
+    if (!l || l.kind === "turret" || l.kind === "inhib" || l.kind === "nexus" || (champsOnly && l.kind !== "champion")) return null;
+    return dist(owner, l) <= range + l.radius + 1 ? l : null;
+  }
+
   area(owner: Unit, o: AreaOpts) {
+    // Fläche auf den anvisierten Gegner: sie wandert mit ihm, bis sie auslöst
+    const l = this.lockedFor(owner, 99);
+    if (l && !o.follow && Math.hypot(o.x - l.x, o.z - l.z) < 2) o = { ...o, follow: l };
     this.areas.push({ id: this.nextId++, owner, team: owner.team, t0: this.t, done: false, ...o });
   }
 
@@ -928,6 +938,15 @@ export class World {
     return true;
   }
 
+  /** Anvisierter Gegner, solange er noch angreifbar ist (sonst wird die Markierung gelöscht). */
+  lockOf(c: Champion): Unit | null {
+    if (c.lockTarget && !this.attackable(c.lockTarget, c.team)) c.lockTarget = null;
+    return c.lockTarget;
+  }
+
+  /** Während eine Fähigkeit ausgelöst wird: der anvisierte Gegner, auf den Geschosse und Flächen gelenkt werden. */
+  private castLock: Unit | null = null;
+
   cast(c: Champion, slot: number, aim: V2 | null, target: Unit | null = null): boolean {
     if (!c.alive || c.stunned(this.t) || c.dash || this.winner !== null) return false;
     const rank = c.ranks[slot];
@@ -935,6 +954,12 @@ export class World {
     const cost = c.manaFor(slot);
     if (c.mana < cost) return false;
     const ab = c.def.abilities[slot];
+    // anvisierter Gegner: Fähigkeit automatisch auf ihn richten (Geschosse und Flächen treffen ihn dann sicher)
+    const lock = this.lockOf(c);
+    if (lock && ab.targeting !== "self") {
+      aim = { x: lock.x, z: lock.z };
+      if (ab.targeting === "unit" && lock.kind === "champion") target = lock;
+    }
     let p = aim ?? { x: c.x + Math.sin(c.facing) * Math.max(3, ab.range), z: c.z + Math.cos(c.facing) * Math.max(3, ab.range) };
     if (ab.targeting === "unit") {
       const t = target && this.attackable(target, c.team) && target.kind === "champion" ? target : this.nearestEnemyChamp(c.team, p.x, p.z, 6);
@@ -950,7 +975,12 @@ export class World {
     this.cancelRecall(c);
     c.lockT = Math.max(c.lockT, 0.15);
     c.anim.cast = Math.max(c.anim.cast, 0.3);
-    ab.cast(this, c, p, rank, target);
+    this.castLock = ab.targeting !== "self" ? lock : null;
+    try {
+      ab.cast(this, c, p, rank, target);
+    } finally {
+      this.castLock = null;
+    }
     this.events.push({ type: "cast", unit: c, slot });
     return true;
   }

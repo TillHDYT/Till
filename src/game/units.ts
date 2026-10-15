@@ -190,6 +190,8 @@ export class Champion extends Unit {
   order: Order = { type: "none" };
   empower: Empower | null = null;
   swing: Swing | null = null;
+  /** Vom Spieler anvisierter Gegner (Rechtsklick oder Antippen): Fähigkeiten zielen automatisch darauf. */
+  lockTarget: Unit | null = null;
   lastAttackChampAt = -99;
   name: string;
   redBuff = false;

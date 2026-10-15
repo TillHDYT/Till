@@ -65,6 +65,13 @@ export class Input {
       const t = e.target as HTMLElement;
       if (t.closest("button") || t.closest(".modal") || t.closest(".tl")) return;
       if (e.pointerType === "mouse") return;
+      // Gegner, Minion, Monster oder Turm antippen: anvisieren und angreifen
+      const tapped = this.p.alive ? this.unitAt(e.clientX, e.clientY) : null;
+      if (tapped) {
+        this.selectTarget(tapped);
+        e.preventDefault();
+        return;
+      }
       if (e.clientX < window.innerWidth * 0.5 && !this.joy) {
         this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
         E.joy.style.left = `${e.clientX}px`;
@@ -240,6 +247,7 @@ export class Input {
       if (k === "p") this.onShop();
       if (k === "s") {
         this.rmb.held = false;
+        this.p.lockTarget = null;
         this.p.order = { type: "none" };
         this.p.path = [];
       }
@@ -428,6 +436,14 @@ export class Input {
     return { x: this.p.x, z: this.p.z };
   }
 
+  /** Gegner anvisieren: hinlaufen und angreifen, Fähigkeiten zielen auf ihn. */
+  private selectTarget(u: Unit) {
+    const p = this.p;
+    this.world.cancelRecall(p);
+    p.lockTarget = u;
+    p.order = { type: "attack", target: u };
+  }
+
   /** Angreifbarer Gegner unter dem Mauszeiger: Abstand zur Linie Füße–Kopf, in der Nahansicht entsprechend breiter. */
   unitAt(sx: number, sy: number): Unit | null {
     const w = this.world;
@@ -463,11 +479,13 @@ export class Input {
     this.mouse.y = sy;
     // Gegner unter dem Mauszeiger?
     const best = this.unitAt(sx, sy);
-    w.cancelRecall(p);
     if (best) {
-      p.order = { type: "attack", target: best };
+      this.selectTarget(best);
       return;
     }
+    // Klick auf den Boden hebt die Markierung auf
+    w.cancelRecall(p);
+    p.lockTarget = null;
     const m = this.mouseWorld();
     const pt = w.freeGoal(p, m.x, m.z);
     p.order = { type: "move", x: pt.x, z: pt.z };
