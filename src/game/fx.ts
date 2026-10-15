@@ -48,9 +48,10 @@ export class Particles {
         uniform float uScale;
         void main() {
           vCol = color;
-          vA = alpha;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = size * uScale / -mv.z;
+          // dicht vor der Kamera (Nahansicht) ausblenden statt bildfüllend aufzublähen
+          vA = alpha * smoothstep(0.8, 2.5, -mv.z);
+          gl_PointSize = min(size * uScale / -mv.z, 256.0);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `

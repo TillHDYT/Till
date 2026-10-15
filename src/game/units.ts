@@ -82,6 +82,9 @@ export class Unit {
   dash: Dash | null = null;
   vis: [boolean, boolean] = [true, true];
   revealUntil = 0;
+  /** Bewegung: gemerkte Ausweichseite an Gebäuden, Umweg per Pfadsuche und Fortschrittskontrolle gegen Festhängen. */
+  steer = { id: -1, side: 0 };
+  nav = { path: [] as V2[], gx: 0, gz: 0, at: -99, px: 0, pz: 0, pt: 0, stuck: 0 };
   /** Für die Darstellung. swing: Fortschritt 0..1 des laufenden Schlags (Schlaganimation), -1 = keiner. */
   anim = { atk: 0, cast: 0, hit: 0, moving: false, speed: 0, walk: 0, swing: -1 };
   vx = 0;

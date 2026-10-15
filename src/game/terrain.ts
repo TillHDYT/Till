@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { addCutUniforms } from "./camcut";
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { fbm, noise2, rng, type NavGrid } from "./navgrid";
@@ -12,6 +13,11 @@ import stoneUrl from "../assets/stone.jpg";
 import tallgrassUrl from "../assets/tallgrass.png";
 
 export type Quality = "high" | "low";
+/** Höhe der Wasseroberfläche im Fluss. */
+export const WATER_Y = -0.32;
+
+/** Bäume nahe der Kamera und zwischen Kamera und Champion in der Nahansicht ausblenden (siehe camcut.ts). */
+const cutPatch = (shader: THREE.WebGLProgramParametersWithUniforms) => addCutUniforms(shader, "vFogW");
 
 type RGB = [number, number, number];
 const hex = (h: number): RGB => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
@@ -693,7 +699,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   });
   const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(MAP, MAP), water);
   waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set(MAP / 2, -0.32, MAP / 2);
+  waterMesh.position.set(MAP / 2, WATER_Y, MAP / 2);
   waterMesh.renderOrder = 2;
   group.add(waterMesh);
 
@@ -720,6 +726,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       m,
       (shader) => {
         swayPatch(shader);
+        cutPatch(shader);
         // Rückseiten von Blättern und Halmen wie die Vorderseite beleuchten (sonst schwarz)
         shader.fragmentShader = shader.fragmentShader.replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\nnormal = normalize(vNormal);");
       },
@@ -773,7 +780,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     { geo: broadFoliage(7), mat: foliageMat(texture(leavesUrl, false), "leaf", "0.03 * max(0.0, position.y - 1.5)") },
   ];
   const trunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  fog.patch(trunkMat);
+  fog.patch(trunkMat, cutPatch, "trunk");
   const trunks = [colored(new THREE.CylinderGeometry(0.13, 0.28, 2.2, 6), 0x4a3424, mat4(0, 1.0, 0)), colored(new THREE.CylinderGeometry(0.2, 0.36, 3.0, 7), 0x5a3f2a, mat4(0, 1.4, 0))];
   for (let kind = 0; kind < TREE_KINDS; kind++) {
     for (const list of buckets[kind]) {

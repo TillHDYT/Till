@@ -6,10 +6,19 @@ import { Input } from "./input";
 import { MAP } from "./mapdata";
 import { setGuardianEnvironment } from "./models";
 import { NavGrid } from "./navgrid";
+import { camCut } from "./camcut";
 import type { Quality } from "./terrain";
 import { View } from "./view";
 import { World, type MatchSetup } from "./world";
 
+/** Nahansicht: so viele Champion-Höhen bleibt die Kamera mindestens entfernt (die Figur füllt dann gut 2/3 des Bildes). */
+const CLOSE_DIST = 1.8;
+/** Blickwinkel von oben bei voller Nähe; weiter weg bleibt die bisherige Perspektive. */
+const CLOSE_PITCH = (32 * Math.PI) / 180;
+/** Unterhalb dieses Zooms beginnt der Übergang in die Nahansicht (darüber alles wie bisher). */
+const NEAR_ZOOM = 0.75;
+/** Nie steiler als die bisherige Ansicht, wenn die Kamera einem Hindernis ausweicht. */
+const MAX_PITCH = (54.5 * Math.PI) / 180;
 let sharedGrid: NavGrid | null = null;
 export function navGrid() {
   if (!sharedGrid) sharedGrid = new NavGrid();
@@ -36,6 +45,12 @@ export class Game {
   private opts: GameOptions;
   private onResize = () => this.resize();
   private shake = 0;
+  /** geglätteter Zoom, Bodenhöhe unter dem Champion und Ausweichen der Kamera vor Hindernissen */
+  private zoomS = 1;
+  private groundS = 0;
+  private dodgePitch = 0;
+  private dodgeDist = 0;
+  private shadowSize = 38;
   debugTop = false;
 
   constructor(container: HTMLElement, opts: GameOptions) {
@@ -185,6 +200,31 @@ export class Game {
     this.hud.onEvents(play);
   }
 
+  /** Kleinster Zoom, bei dem die Kamera noch CLOSE_DIST Champion-Höhen entfernt ist. */
+  private minZoom(height: number, pf: number) {
+    // Abstand zum Blickpunkt bei Zoom z (siehe updateCamera): R² = 1.0192·a² + 1.68·a + 2.25 mit a = 38·z·pf
+    const r = CLOSE_DIST * height;
+    const a = (-1.68 + Math.sqrt(1.68 * 1.68 - 4 * 1.0192 * (2.25 - r * r))) / (2 * 1.0192);
+    return a / (38 * pf);
+  }
+
+  /**
+   * Steckt die Kamera im Gelände oder verdeckt eine Felskante den Champion (Blickpunkt l -> Kamera c)?
+   * Bäume und Gebäude blendet camcut.ts aus, die müssen hier nicht geprüft werden.
+   */
+  private camBlocked(lx: number, ly: number, lz: number, cx: number, cy: number, cz: number) {
+    const g = this.world.grid;
+    const m = 0.5;
+    if (cy < g.heightAt(cx, cz) + m || cy < g.heightAt(cx + m, cz) + m || cy < g.heightAt(cx - m, cz) + m || cy < g.heightAt(cx, cz + m) + m || cy < g.heightAt(cx, cz - m) + m) return true;
+    for (let i = 2; i < 10; i++) {
+      const f = i / 10;
+      const x = lx + (cx - lx) * f;
+      const z = lz + (cz - lz) * f;
+      if (ly + (cy - ly) * f < g.heightAt(x, z) + 0.15) return true;
+    }
+    return false;
+  }
+
   private updateCamera(dt: number) {
     const w = this.world;
     const p = w.player;
@@ -194,27 +234,95 @@ export class Game {
       const nexus = w.structures.find((s) => s.kind === "nexus" && s.team !== w.winner)!;
       tx = nexus.x;
       tz = nexus.z;
+      // am Spielende auf den Nexus schauen, nicht aus nächster Nähe in ihn hinein
+      this.input.zoom = Math.max(this.input.zoom, 1);
     }
-    const k = w.winner !== null ? Math.min(1, dt * 2) : Math.min(1, dt * 10);
-    this.camTarget.x += (tx - this.camTarget.x) * k;
-    this.camTarget.z += (tz - this.camTarget.z) * k;
     const aspect = window.innerWidth / window.innerHeight;
     // Mindestens ~30 Einheiten Breite auch im Hochformat
     const portrait = aspect < 1 ? 1 / Math.max(0.45, aspect) : 1;
-    const dist = 38 * this.input.zoom * Math.min(1.9, portrait);
+    const pf = Math.min(1.9, portrait);
+    // Zoom stufenlos nachführen (im Logarithmus, damit jeder Mausrad-Schritt gleich wirkt)
+    this.input.zoom = Math.max(this.minZoom(p.height, pf), this.input.zoom);
+    this.zoomS = Math.exp(Math.log(this.zoomS) + (Math.log(this.input.zoom) - Math.log(this.zoomS)) * (1 - Math.exp(-dt / 0.1)));
+    const zoom = this.zoomS;
+    // 0 = bisherige Ansicht, 1 = ganz nah am Champion
+    const near = smooth01((NEAR_ZOOM - zoom) / (NEAR_ZOOM - 0.12));
+    if (near > 0 && w.winner === null && Math.hypot(tx - this.camTarget.x, tz - this.camTarget.z) > 15) {
+      // Sprung (Rückruf, Wiederbelebung): in der Nahansicht nicht quer über die Karte gleiten
+      this.camTarget.x = tx;
+      this.camTarget.z = tz;
+    }
+    const k = w.winner !== null ? Math.min(1, dt * 2) : Math.min(1, dt * (10 + 15 * near));
+    this.camTarget.x += (tx - this.camTarget.x) * k;
+    this.camTarget.z += (tz - this.camTarget.z) * k;
+    const dist = 38 * zoom * pf;
+    let nearPlane = 1;
     if (this.debugTop) {
       this.camera.position.set(MAP / 2, 260, MAP / 2 + 0.01);
       this.camera.lookAt(MAP / 2, 0, MAP / 2);
     } else {
-      const sh = this.shake > 0 ? this.shake * 0.4 : 0;
+      const sh = this.shake > 0 ? this.shake * 0.4 * Math.min(1, zoom / NEAR_ZOOM) : 0;
       this.shake = Math.max(0, this.shake - dt * 1.5);
       const jx = (Math.random() - 0.5) * sh;
       const jz = (Math.random() - 0.5) * sh;
-      this.camera.position.set(this.camTarget.x + jx, dist * 0.84, this.camTarget.z + dist * 0.56 + jz);
-      this.camera.lookAt(this.camTarget.x + jx, 0, this.camTarget.z - 1.5 + jz);
+      if (near <= 0) {
+        this.dodgePitch = this.dodgeDist = 0;
+        this.camera.position.set(this.camTarget.x + jx, dist * 0.84, this.camTarget.z + dist * 0.56 + jz);
+        this.camera.lookAt(this.camTarget.x + jx, 0, this.camTarget.z - 1.5 + jz);
+      } else {
+        // gleiche Kamera wie bisher, nur mit wachsender Nähe: Blick auf Brusthöhe statt auf den Boden, flacherer Winkel
+        const g = w.grid;
+        this.groundS += (g.groundAt(this.camTarget.x, this.camTarget.z) - this.groundS) * Math.min(1, dt * 8);
+        const up = 0.84 * dist;
+        const back = 0.56 * dist + 1.5;
+        const R = Math.hypot(up, back);
+        const pitch0 = Math.atan2(up, back);
+        const pitch = pitch0 + (CLOSE_PITCH - pitch0) * near;
+        const lx = this.camTarget.x + jx;
+        const ly = near * (this.groundS + 0.5 * p.height);
+        const lz = this.camTarget.z - 1.5 * (1 - near) + jz;
+        // Gelände zwischen Kamera und Champion: erst steiler schauen (höchstens wie bisher), dann etwas zurückweichen
+        const top = Math.max(pitch0, MAX_PITCH);
+        let wantPitch = 0;
+        let wantDist = 0;
+        const blockedAt = (a: number, r: number) => this.camBlocked(lx, ly, lz, lx, ly + r * Math.sin(a), lz + r * Math.cos(a));
+        if (blockedAt(pitch, R)) {
+          let a = pitch;
+          while (a < top && blockedAt(a, R)) a = Math.min(top, a + (2 * Math.PI) / 180);
+          wantPitch = a - pitch;
+          if (blockedAt(a, R)) {
+            for (wantDist = 0.5; wantDist < 6 && blockedAt(a, R + wantDist); wantDist += 0.5);
+          }
+        }
+        // ausweichen schnell, zurückkehren langsam (kein Springen bei kurzen Hindernissen)
+        const ease = (cur: number, want: number) => cur + (want - cur) * (1 - Math.exp(-dt / (want > cur ? 0.04 : 0.35)));
+        this.dodgePitch = ease(this.dodgePitch, wantPitch);
+        this.dodgeDist = ease(this.dodgeDist, wantDist);
+        const a = Math.min(top, pitch + this.dodgePitch);
+        const r = R + this.dodgeDist;
+        this.camera.position.set(lx, ly + r * Math.sin(a), lz + r * Math.cos(a));
+        this.camera.lookAt(lx, ly, lz);
+        nearPlane = Math.max(0.3, Math.min(1, 0.06 * r));
+      }
+    }
+    if (this.camera.near !== nearPlane) {
+      this.camera.near = nearPlane;
+      this.camera.updateProjectionMatrix();
+    }
+    // Bäume und Gebäude zwischen Kamera und Champion in der Nahansicht ausblenden
+    camCut.uCutOn.value = this.debugTop ? 0 : Math.min(1, near * 2);
+    camCut.uCutB.value.set(this.camTarget.x, this.groundS + 0.5 * p.height, this.camTarget.z);
+    // Schatten: in der Nahansicht kleinerer Bereich, damit die Schattenkanten nicht grob werden
+    const size = near < 0.25 ? 38 : near < 0.5 ? 30 : near < 0.75 ? 24 : 20;
+    const sc = this.sun.shadow.camera;
+    if (size !== this.shadowSize) {
+      this.shadowSize = size;
+      sc.left = sc.bottom = -size;
+      sc.right = sc.top = size;
+      sc.updateProjectionMatrix();
     }
     // Sonne folgt der Kamera, Schatten in Texel-Schritten, damit nichts flimmert
-    const step = 76 / this.sun.shadow.mapSize.x;
+    const step = (2 * size) / this.sun.shadow.mapSize.x;
     const sx = Math.round(this.camTarget.x / step) * step;
     const sz = Math.round(this.camTarget.z / step) * step;
     this.sun.position.set(sx - 30, 70, sz + 35);
@@ -239,4 +347,9 @@ export class Game {
       if (m.geometry) m.geometry.dispose();
     });
   }
+}
+
+function smooth01(x: number) {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
 }

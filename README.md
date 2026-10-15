@@ -143,3 +143,15 @@ python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.g
 
 Beide Modelle werden ohne Netzwerkzugriff geladen (eingebettete Datei selbst dekodiert, Texturen als
 data:-Bilder), damit sie auch in abgeschotteten Vorschauen wie der Claude-App erscheinen.
+
+## Kamera und Steuerung (PC)
+
+- **Mausrad:** stufenloser Zoom von weit draußen (1,35) bis ganz nah an den eigenen Champion (etwa 1,8 Champion-Höhen
+  Abstand). Ab Zoom 0,75 wird der Blick allmählich flacher und auf Brusthöhe gerichtet; darüber bleibt die Ansicht wie
+  bisher. Die Kamera bleibt über dem Gelände und schaut über Felskanten; Bäume und Gebäude zwischen Kamera und Champion
+  werden in der Nahansicht gerastert ausgeblendet (`src/game/camcut.ts`, Werte in `Game.updateCamera`).
+- **Rechte Maustaste halten:** der Champion folgt laufend dem Mauszeiger; nach dem Loslassen läuft er zum zuletzt
+  gesetzten Ziel. Auf einen Gegner gedrückt = angreifen (wegziehen = wieder laufen).
+- **Wegfindung:** Minions und Champions gehen um Türme, Inhibitoren und Nexus herum (`World.steerAround`), statt
+  frontal dagegenzulaufen; kommen sie eine Sekunde kaum voran, wechseln sie die Seite bzw. planen neu (`isStuck`).
+  Minions finden per Pfadsuche zurück auf die Lane und erscheinen am Rand der Nexus statt in ihrer Mitte.

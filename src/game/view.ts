@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { applyCameraCut } from "./camcut";
 import { FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
 import { FOUNTAIN, type V2 } from "./mapdata";
@@ -98,6 +99,7 @@ export class View {
       const fo = buildFountain(i as 0 | 1);
       fo.position.set(f.x, 0.12, f.z);
       fo.rotation.y = Math.atan2(100 - f.x, 100 - f.z);
+      applyCameraCut(fo);
       scene.add(fo);
     });
 
@@ -112,6 +114,8 @@ export class View {
           o.receiveShadow = true;
         }
       });
+      // in der Nahansicht verdecken Gebäude den eigenen Champion nicht
+      applyCameraCut(model.root);
       scene.add(model.root);
       this.structs.set(s.id, { model, unit: s, lastAtk: 0, beam: null, halo: null });
       // Feuerschalen links und rechts der Inhibitoren
@@ -123,6 +127,7 @@ export class View {
           const bz = s.z - sn * 4.4 * side - c * 1.2;
           const b = buildBrazier();
           b.root.position.set(bx, world.grid.groundAt(bx, bz), bz);
+          applyCameraCut(b.root);
           scene.add(b.root);
           this.braziers.push({ x: bx, z: bz, y: b.root.position.y + b.fireY, glow: b.glow, flame: b.flame, phase: Math.random() * 6 });
         }

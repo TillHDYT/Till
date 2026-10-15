@@ -525,7 +525,11 @@ export class Hud {
     const scale = Number(this.root.style.getPropertyValue("--s")) || 1;
 
     const bar = (u: Unit, bw: number, bh: number, color: string, extra?: (x: number, y: number) => void) => {
-      const pos = this.view.project(camera, u.x, g.groundAt(u.x, u.z) + u.height + 0.4, u.z, W, H);
+      const gy = g.groundAt(u.x, u.z);
+      const pos = this.view.project(camera, u.x, gy + u.height + 0.4, u.z, W, H);
+      // in der Nahansicht nicht weit über dem Kopf schweben lassen
+      const head = this.view.project(camera, u.x, gy + u.height, u.z, W, H);
+      if (head.on) pos.z = Math.max(pos.z, head.z - 16 * scale);
       if (!pos.on || pos.x < -80 || pos.x > W + 80 || pos.z < -40 || pos.z > H + 40) return;
       const x = pos.x - bw / 2;
       const y = pos.z - bh;

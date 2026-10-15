@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Hud } from "./hud";
 import type { V2 } from "./mapdata";
+import { WATER_Y } from "./terrain";
 import type { Champion, Unit } from "./units";
 import type { View } from "./view";
 import type { World } from "./world";
@@ -9,6 +10,9 @@ type AimSlot = 0 | 1 | 2 | 3 | "flash";
 type Aim = { slot: AimSlot; id: number; cx: number; cy: number; x: number; y: number; moved: boolean; el: HTMLElement };
 
 const MAX_DRAG = 80;
+/** Zoomgrenzen fürs Mausrad (1 = Standard). Wie nah es höchstens geht, legt Game je nach Champion-Größe fest. */
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 1.35;
 
 export class Input {
   private hud: Hud;
@@ -21,6 +25,8 @@ export class Input {
   attackMode: "auto" | "minion" | "turret" | null = null;
   private attackId = -1;
   private mouse = { x: 0, y: 0, inside: false };
+  /** Rechte Maustaste gehalten: Champion folgt laufend dem Mauszeiger (PC). */
+  private rmb = { held: false, x: 0, y: 0, attack: false, ringT: 0, ringX: 0, ringZ: 0 };
   private keysMove = { up: false, down: false, left: false, right: false };
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -98,6 +104,8 @@ export class Input {
         this.mouse.x = e.clientX;
         this.mouse.y = e.clientY;
         this.mouse.inside = true;
+        // Loslassen verpasst (z. B. außerhalb des Fensters): Folgen beenden
+        if (this.rmb.held && !(e.buttons & 2)) this.rmb.held = false;
       }
     });
     const up = (e: PointerEvent) => {
@@ -169,15 +177,43 @@ export class Input {
     this.on(root, "mousedown", (e: MouseEvent) => {
       if (this.paused()) return;
       const t = e.target as HTMLElement;
-      if (t.closest("button") || t.closest(".modal")) return;
-      if (e.button === 2) this.rightClick(e.clientX, e.clientY);
+      // Knöpfe, Fenster und die Minimap reagieren nicht als Bewegungsbefehl
+      if (t.closest("button") || t.closest(".modal") || t.closest(".tl")) return;
+      if (e.button !== 2) return;
+      this.rightClick(e.clientX, e.clientY);
+      const r = this.rmb;
+      r.held = true;
+      r.x = e.clientX;
+      r.y = e.clientY;
+      r.attack = this.p.order.type === "attack";
+      r.ringT = 0.25;
+      r.ringX = this.p.order.type === "move" ? this.p.order.x : this.p.x;
+      r.ringZ = this.p.order.type === "move" ? this.p.order.z : this.p.z;
     });
-    this.on(window, "mouseleave", () => (this.mouse.inside = false));
+    // Loslassen überall erkennen, auch außerhalb des Spielfelds; bei Fokusverlust nichts hängen lassen
+    this.on(window, "mouseup", (e: MouseEvent) => {
+      if (e.button === 2) this.rmb.held = false;
+    });
+    const release = () => {
+      this.rmb.held = false;
+      this.keysMove = { up: false, down: false, left: false, right: false };
+      if (this.attackId === -2) {
+        this.attackMode = null;
+        this.attackId = -1;
+      }
+    };
+    this.on(window, "blur", release);
+    this.on(document as unknown as HTMLElement, "visibilitychange", () => {
+      if (document.hidden) release();
+    });
+    this.on(document as unknown as HTMLElement, "mouseleave", () => (this.mouse.inside = false));
     this.on(
       root,
       "wheel",
       (e: WheelEvent) => {
-        this.zoom = Math.max(0.75, Math.min(1.35, this.zoom + Math.sign(e.deltaY) * 0.06));
+        // stufenlos: Mausrad-Raster und Touchpad-Bewegung wirken gleichmäßig (ein Raster ≈ 20 %)
+        const px = Math.max(-240, Math.min(240, e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? window.innerHeight : 1)));
+        this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * Math.exp(px * (e.ctrlKey ? 0.01 : 0.0018))));
         e.preventDefault();
       },
       { passive: false },
@@ -203,6 +239,7 @@ export class Input {
       if (k === "b") this.recall();
       if (k === "p") this.onShop();
       if (k === "s") {
+        this.rmb.held = false;
         this.p.order = { type: "none" };
         this.p.path = [];
       }
@@ -234,6 +271,7 @@ export class Input {
 
   private recall() {
     if (this.p.recallUntil > 0) return;
+    this.rmb.held = false;
     this.p.order = { type: "none" };
     this.p.moveVec = null;
     this.world.startRecall(this.p);
@@ -327,13 +365,94 @@ export class Input {
     w.cast(p, slot, { x: p.x + (dir.x / len) * dist, z: p.z + (dir.z / len) * dist });
   }
 
+  /**
+   * Gehaltene rechte Maustaste: das Bewegungsziel folgt jedes Bild dem Mauszeiger (die Kamera bewegt sich mit,
+   * darum wird der Punkt jedes Mal neu bestimmt). Wege plant World.followTo; bei freier Sicht ohne Pfadsuche.
+   */
+  private followMouse(dt: number) {
+    const p = this.p;
+    const r = this.rmb;
+    if (!p.alive) return;
+    // auf einen Gegner gedrückt: angreifen, bis die Maus mit gehaltener Taste weggezogen wird
+    if (r.attack) {
+      if (p.order.type === "attack" && Math.hypot(this.mouse.x - r.x, this.mouse.y - r.y) < 12 * this.scale()) return;
+      r.attack = false;
+    }
+    const m = this.mouseWorld();
+    const pt = this.world.freeGoal(p, m.x, m.z);
+    if (Math.hypot(pt.x - p.x, pt.z - p.z) < 0.6) {
+      if (p.order.type === "move") p.order = { type: "none" };
+      return;
+    }
+    this.world.cancelRecall(p);
+    p.order = { type: "move", x: pt.x, z: pt.z };
+    // kleine Zielmarkierung, sparsam
+    r.ringT -= dt;
+    if (r.ringT <= 0 && Math.hypot(pt.x - r.ringX, pt.z - r.ringZ) > 1) {
+      r.ringT = 0.25;
+      r.ringX = pt.x;
+      r.ringZ = pt.z;
+      this.view.ground.ring(pt.x, this.world.grid.groundAt(pt.x, pt.z), pt.z, 0.9, 0.2, 0x7dff6a, 0.3, 0.5);
+    }
+  }
+
+  /** Punkt auf dem Gelände unter dem Mauszeiger (echte Bodenhöhe, Wasser im Fluss). */
   mouseWorld(): V2 {
-    const nx = (this.mouse.x / window.innerWidth) * 2 - 1;
-    const ny = -(this.mouse.y / window.innerHeight) * 2 + 1;
+    const nx = Math.max(-1, Math.min(1, (this.mouse.x / window.innerWidth) * 2 - 1));
+    const ny = Math.max(-1, Math.min(1, -(this.mouse.y / window.innerHeight) * 2 + 1));
     this.ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
+    const o = this.ray.ray.origin;
+    const d = this.ray.ray.direction;
+    const g = this.world.grid;
+    const below = (t: number) => o.y + d.y * t <= Math.max(g.heightAt(o.x + d.x * t, o.z + d.z * t), WATER_Y);
+    if (d.y < -1e-3) {
+      // vom höchsten Gelände abwärts in kleinen Schritten, dann den Schnittpunkt halbierend eingrenzen
+      let prev = Math.max(0, (o.y - 6) / -d.y);
+      const end = (o.y - WATER_Y) / -d.y + 0.5;
+      for (let t = prev; t <= end; t += 0.5) {
+        if (below(t)) {
+          let lo = prev;
+          let hi = t;
+          for (let i = 0; i < 12; i++) {
+            const mid = (lo + hi) / 2;
+            if (below(mid)) hi = mid;
+            else lo = mid;
+          }
+          return { x: o.x + d.x * hi, z: o.z + d.z * hi };
+        }
+        prev = t;
+      }
+    }
     const hit = new THREE.Vector3();
     if (this.ray.ray.intersectPlane(this.plane, hit)) return { x: hit.x, z: hit.z };
     return { x: this.p.x, z: this.p.z };
+  }
+
+  /** Angreifbarer Gegner unter dem Mauszeiger: Abstand zur Linie Füße–Kopf, in der Nahansicht entsprechend breiter. */
+  unitAt(sx: number, sy: number): Unit | null {
+    const w = this.world;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const base = 40 * this.scale();
+    let best: Unit | null = null;
+    let bestScore = 0;
+    for (const u of w.all) {
+      if (!w.attackable(u, this.p.team) || !this.view.isUnitShown(u)) continue;
+      const gy = w.grid.groundAt(u.x, u.z);
+      const foot = this.view.project(this.camera, u.x, gy, u.z, W, H);
+      const head = this.view.project(this.camera, u.x, gy + u.height, u.z, W, H);
+      if (!foot.on && !head.on) continue;
+      const mid = this.view.project(this.camera, u.x, gy + u.height * 0.5, u.z, W, H);
+      const side = this.view.project(this.camera, u.x + u.radius, gy + u.height * 0.5, u.z, W, H);
+      const reach = Math.max(base, Math.hypot(side.x - mid.x, side.z - mid.z));
+      const bonus = u.kind === "turret" || u.kind === "nexus" || u.kind === "inhib" ? 30 : 0;
+      const score = segDist(sx, sy, foot.x, foot.z, head.x, head.z) - bonus - reach;
+      if (score < bestScore) {
+        bestScore = score;
+        best = u;
+      }
+    }
+    return best;
   }
 
   private rightClick(sx: number, sy: number) {
@@ -343,25 +462,14 @@ export class Input {
     this.mouse.x = sx;
     this.mouse.y = sy;
     // Gegner unter dem Mauszeiger?
-    let best: Unit | null = null;
-    let bd = 40 * this.scale();
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    for (const u of w.all) {
-      if (!w.attackable(u, p.team) || !this.view.isUnitShown(u)) continue;
-      const s = this.view.project(this.camera, u.x, w.grid.groundAt(u.x, u.z) + u.height * 0.5, u.z, W, H);
-      const d = Math.hypot(s.x - sx, s.z - sy) - (u.kind === "turret" || u.kind === "nexus" || u.kind === "inhib" ? 30 : 0);
-      if (d < bd) {
-        bd = d;
-        best = u;
-      }
-    }
+    const best = this.unitAt(sx, sy);
     w.cancelRecall(p);
     if (best) {
       p.order = { type: "attack", target: best };
       return;
     }
-    const pt = this.mouseWorld();
+    const m = this.mouseWorld();
+    const pt = w.freeGoal(p, m.x, m.z);
     p.order = { type: "move", x: pt.x, z: pt.z };
     this.view.ground.ring(pt.x, w.grid.groundAt(pt.x, pt.z), pt.z, 1.2, 0.2, 0x7dff6a, 0.35, 0.9);
   }
@@ -416,6 +524,7 @@ export class Input {
       const d = Math.hypot(t.x - p.x, t.z - p.z) - t.radius - p.radius;
       if (d <= p.stats.range) mv = null;
     }
+    if (!mv && this.rmb.held) this.followMouse(dt);
     if (mv) {
       p.order = this.attackMode ? p.order : { type: "none" };
       p.path = [];
@@ -460,4 +569,12 @@ export class Input {
     for (const d of this.disposers) d();
     this.disposers = [];
   }
+}
+
+/** Abstand eines Punkts zur Strecke a–b (Bildschirmpixel). */
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / Math.max(1e-6, dx * dx + dy * dy)));
+  return Math.hypot(px - ax - dx * t, py - ay - dy * t);
 }

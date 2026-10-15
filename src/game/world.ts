@@ -4,6 +4,7 @@ import {
   CAMPS,
   FOUNTAIN,
   FOUNTAIN_RADIUS,
+  MAP,
   SPAWN,
   STRUCTURES,
   distToSegment,
@@ -1141,8 +1142,12 @@ export class World {
         }
         const path = lanePath(q.team, q.lane);
         const m = new Minion(q.team, q.type, q.lane, path, scale);
-        m.x += (Math.random() - 0.5) * 0.6;
-        m.z += (Math.random() - 0.5) * 0.6;
+        // am Rand der eigenen Nexus entlang der Lane erscheinen, nicht in ihrer Mitte (sonst ruckartiges Herausschieben)
+        const nx = path[1].x - path[0].x;
+        const nz = path[1].z - path[0].z;
+        const nl = Math.hypot(nx, nz) || 1;
+        m.x += (nx / nl) * (3.6 + m.radius + 0.3) + (Math.random() - 0.5) * 0.6;
+        m.z += (nz / nl) * (3.6 + m.radius + 0.3) + (Math.random() - 0.5) * 0.6;
         this.minions.push(m);
       }
       this.spawnQueue = keep;
@@ -1253,7 +1258,8 @@ export class World {
         c.path = [];
         if (c.lockT <= 0) {
           const sp = c.moveSpeed(t) * Math.min(1, len);
-          this.moveUnit(c, c.moveVec.x / len, c.moveVec.z / len, sp * dt);
+          const dir = this.steerAround(c, c.moveVec.x / len, c.moveVec.z / len, 8);
+          this.moveUnit(c, dir.x, dir.z, sp * dt);
           c.facing = Math.atan2(c.moveVec.x, c.moveVec.z);
           c.anim.moving = true;
           c.anim.speed = sp;
@@ -1297,9 +1303,22 @@ export class World {
   /** Läuft per Pfadsuche zum Ziel. Gibt true zurück, wenn angekommen. */
   followTo(c: Champion, x: number, z: number, dt: number): boolean {
     if (c.lockT > 0) return false;
+    // Ziel auf der Karte und außerhalb von Gebäuden (sonst läuft der Champion endlos auf der Stelle)
+    ({ x, z } = this.freeGoal(c, x, z));
     const goal = this.pathGoal.get(c.id);
     const t = this.t;
-    if (!goal || Math.hypot(goal.x - x, goal.z - z) > 1.5 || (c.path.length === 0 && Math.hypot(c.x - x, c.z - z) > 0.6) || t - goal.at > 1.5) {
+    if (this.isStuck(c, t)) {
+      // kaum vorangekommen: Ausweichseite wechseln und neu planen statt immer gleich gegenzulaufen
+      c.steer.side = -c.steer.side;
+      this.pathGoal.delete(c.id);
+    }
+    if (goal && Math.hypot(goal.x - x, goal.z - z) > 0.3 && this.grid.los(c, { x, z }, 0.8)) {
+      // freie Sicht zum (z. B. mit gehaltener Maustaste verschobenen) Ziel: direkt hin, ohne teure Pfadsuche
+      c.path = [{ x, z }];
+      goal.x = x;
+      goal.z = z;
+    } else if (!goal || (Math.hypot(goal.x - x, goal.z - z) > 1.5 && t - goal.at > 0.15) || (c.path.length === 0 && Math.hypot(c.x - x, c.z - z) > 0.6) || t - goal.at > 1.5) {
+      // volle Pfadsuche höchstens alle 0,15 s, auch wenn das Ziel (gehaltene Maustaste) laufend wandert
       c.path = this.grid.findPath({ x: c.x, z: c.z }, { x, z });
       this.pathGoal.set(c.id, { x, z, at: t });
     }
@@ -1324,8 +1343,9 @@ export class World {
         step -= d;
         if (d > 0.01) c.facing = Math.atan2(dx, dz);
       } else {
-        this.moveUnit(c, dx / d, dz / d, step);
-        c.facing = Math.atan2(dx, dz);
+        const dir = this.steerAround(c, dx / d, dz / d, d);
+        this.moveUnit(c, dir.x, dir.z, step);
+        c.facing = Math.atan2(dir.x, dir.z);
         step = 0;
       }
     }
@@ -1334,6 +1354,138 @@ export class World {
       return true;
     }
     return false;
+  }
+
+  /** Lebende Gebäude (und Inhibitor-Trümmer) blockieren die Bewegung, wie in separate(). */
+  private blocksMove(s: Structure) {
+    return s.alive || s.kind !== "turret";
+  }
+
+  /** Ziel in die Karte holen und aus Gebäuden herausschieben. */
+  freeGoal(u: Unit, x: number, z: number): V2 {
+    x = Math.max(0.5, Math.min(MAP - 0.5, x));
+    z = Math.max(0.5, Math.min(MAP - 0.5, z));
+    for (const s of this.structures) {
+      if (!this.blocksMove(s)) continue;
+      const r = s.radius + u.radius + 0.1;
+      const dx = x - s.x;
+      const dz = z - s.z;
+      const d = Math.hypot(dx, dz);
+      if (d >= r) continue;
+      // auf die Seite, von der die Einheit kommt
+      const ax = d > 0.01 ? dx / d : (u.x - s.x) / (Math.hypot(u.x - s.x, u.z - s.z) || 1);
+      const az = d > 0.01 ? dz / d : (u.z - s.z) / (Math.hypot(u.x - s.x, u.z - s.z) || 1);
+      x = s.x + ax * r;
+      z = s.z + az * r;
+    }
+    return { x, z };
+  }
+
+  /**
+   * Lokales Ausweichen um Gebäude (Türme, Inhibitoren, Nexus): liegt ein Gebäude auf dem Weg, an ihm entlang
+   * vorbeigehen statt frontal dagegen. Die gewählte Seite bleibt, bis das Gebäude passiert ist (kein Zickzack).
+   */
+  steerAround(u: Unit, dx: number, dz: number, dist: number): V2 {
+    const look = Math.min(dist, 6);
+    let best: Structure | null = null;
+    let bestAlong = Infinity;
+    for (const s of this.structures) {
+      if (!this.blocksMove(s)) continue;
+      // am Gebäude, um das gerade herumgegangen wird, etwas länger festhalten (kein Hin und Her)
+      const r = s.radius + u.radius + (s.id === u.steer.id ? 0.7 : 0.2);
+      const ox = s.x - u.x;
+      const oz = s.z - u.z;
+      const along = ox * dx + oz * dz;
+      if (along <= 0 || along > look + r) continue;
+      const side = ox * dz - oz * dx;
+      if (Math.abs(side) >= r) continue;
+      // Ziel liegt vor dem Gebäude: kein Umweg nötig
+      if (Math.hypot(ox, oz) > dist + r * 0.2 && along > dist) continue;
+      if (along < bestAlong) {
+        bestAlong = along;
+        best = s;
+      }
+    }
+    if (!best) {
+      u.steer.id = -1;
+      return { x: dx, z: dz };
+    }
+    const s = best;
+    const ox = s.x - u.x;
+    const oz = s.z - u.z;
+    const d = Math.hypot(ox, oz) || 0.001;
+    const r = s.radius + u.radius + 0.2;
+    if (u.steer.id !== s.id || u.steer.side === 0) {
+      // Seite wählen, auf der der Weg kürzer ist (Gebäudemitte rechts vom Weg -> links vorbei)
+      const cross = ox * dz - oz * dx;
+      u.steer = { id: s.id, side: cross > 0 ? -1 : 1 };
+    }
+    const sd = u.steer.side;
+    // Tangente am (um die eigene Größe vergrößerten) Gebäudekreis
+    const a = Math.asin(Math.min(1, r / d));
+    const base = Math.atan2(ox, oz) + sd * a;
+    let tx = Math.sin(base);
+    let tz = Math.cos(base);
+    if (d < r + 0.05) {
+      // schon am Gebäude: genau seitlich daran entlang
+      tx = (-oz / d) * -sd;
+      tz = (ox / d) * -sd;
+      if (tx * dx + tz * dz < 0) {
+        tx = -tx;
+        tz = -tz;
+      }
+    }
+    return { x: tx, z: tz };
+  }
+
+  /** Kommt die Einheit seit einer Sekunde kaum voran, obwohl sie laufen will? Prüft nur einmal pro Sekunde. */
+  private isStuck(u: Unit, t: number) {
+    const n = u.nav;
+    if (t - n.pt < 1) return false;
+    const moved = Math.hypot(u.x - n.px, u.z - n.pz);
+    const wanted = u.anim.moving && t - n.pt < 1.5;
+    const stuck = wanted && moved < 0.3 * u.stats.ms * (t - n.pt);
+    n.px = u.x;
+    n.pz = u.z;
+    n.pt = t;
+    n.stuck = stuck ? n.stuck + 1 : 0;
+    return stuck;
+  }
+
+  /**
+   * Minion läuft zu einem Punkt: bei freier Sicht geradeaus (um Gebäude herum), sonst über die Pfadsuche
+   * (z. B. wenn ihn ein Champion von der Lane in den Wald gelockt hat). Pfade werden höchstens alle 2 s neu berechnet.
+   */
+  private minionMoveTo(m: Minion, x: number, z: number, dt: number) {
+    const t = this.t;
+    const n = m.nav;
+    if (this.isStuck(m, t)) {
+      m.steer.side = -m.steer.side;
+      n.at = -99;
+    }
+    let tx = x;
+    let tz = z;
+    if (n.stuck > 0 || !this.grid.los(m, { x, z }, 0.5)) {
+      if (t - n.at > 2 || Math.hypot(n.gx - x, n.gz - z) > 3 || n.path.length === 0) {
+        n.path = this.grid.findPath({ x: m.x, z: m.z }, { x, z });
+        n.gx = x;
+        n.gz = z;
+        n.at = t;
+      }
+      while (n.path.length > 1 && Math.hypot(n.path[0].x - m.x, n.path[0].z - m.z) < 0.8) n.path.shift();
+      if (n.path.length) {
+        tx = n.path[0].x;
+        tz = n.path[0].z;
+      }
+    } else n.path = [];
+    const dx = tx - m.x;
+    const dz = tz - m.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const dir = this.steerAround(m, dx / len, dz / len, len);
+    this.moveUnit(m, dir.x, dir.z, m.moveSpeed(t) * dt);
+    m.facing = Math.atan2(dir.x, dir.z);
+    m.anim.moving = true;
+    m.anim.speed = m.moveSpeed(t);
   }
 
   moveUnit(u: Unit, dx: number, dz: number, step: number) {
@@ -1426,7 +1578,10 @@ export class World {
     // Ziel suchen (gestaffelt)
     const retarget = (m.id + Math.floor(t * 4)) % 2 === 0;
     let tg = m.target;
-    if (tg && (!this.attackable(tg, m.team) || dist(tg, m) > 13)) tg = null;
+    // nicht beliebig weit von der Lane weglocken lassen
+    const home = m.path[Math.min(m.wp, m.path.length - 1)];
+    const prev = m.path[Math.max(0, Math.min(m.wp, m.path.length - 1) - 1)];
+    if (tg && (!this.attackable(tg, m.team) || dist(tg, m) > 13 || distToSegment(m, prev, home) > 14)) tg = null;
     if (tg && t > m.forcedUntil && tg.kind === "champion" && retarget) {
       // nach Ablauf des Hilferufs lieber Minions angreifen
       const alt = this.minionTarget(m, true);
@@ -1444,13 +1599,7 @@ export class World {
         return;
       }
       if (m.lockT > 0) return;
-      const dx = tg.x - m.x;
-      const dz = tg.z - m.z;
-      const len = Math.hypot(dx, dz) || 1;
-      this.moveUnit(m, dx / len, dz / len, m.moveSpeed(t) * dt);
-      m.facing = Math.atan2(dx, dz);
-      m.anim.moving = true;
-      m.anim.speed = m.moveSpeed(t);
+      this.minionMoveTo(m, tg.x, tg.z, dt);
       return;
     }
 
@@ -1460,13 +1609,10 @@ export class World {
     const dx = p.x - m.x;
     const dz = p.z - m.z;
     const len = Math.hypot(dx, dz);
-    if (len < 2.2 && m.wp < m.path.length - 1) m.wp++;
-    if (len > 0.5) {
-      this.moveUnit(m, dx / len, dz / len, m.moveSpeed(t) * dt);
-      m.facing = Math.atan2(dx, dz);
-      m.anim.moving = true;
-      m.anim.speed = m.moveSpeed(t);
-    } else m.anim.moving = false;
+    // Wegpunkt erreicht (auch wenn ein Gebäude direkt darauf steht und man nur um es herumkommt)
+    if (m.wp < m.path.length - 1 && (len < 2.2 || this.structures.some((st) => this.blocksMove(st) && Math.hypot(st.x - p.x, st.z - p.z) < st.radius + 1 && len < st.radius + m.radius + 2))) m.wp++;
+    if (len > 0.5) this.minionMoveTo(m, p.x, p.z, dt);
+    else m.anim.moving = false;
   }
 
   private minionTarget(m: Minion, minionsOnly: boolean): Unit | null {
