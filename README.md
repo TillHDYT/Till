@@ -90,6 +90,15 @@ Animation `Run` in der Schleife (Tempo folgt der Laufgeschwindigkeit). Beim Anha
 nächste ruhige Haltung (Füße beieinander) und bleibt stehen. Fehlt einem Modell die UV-Abwicklung, können die
 eingebetteten Texturen nicht aufgelegt werden; dann bekommt es Farben aus dem `look` des Champions.
 
+Das GLB entsteht aus der Mixamo-FBX (`assets-src/Assassine_Running.fbx`). Ein Umweg über Assimp verliert die
+UV-Koordinaten, deshalb der Weg über Blender. Die Vorwärtsbewegung der Hüfte wird dabei herausgerechnet
+(Laufen auf der Stelle), die Texturen werden auf 1024 px verkleinert:
+
+```bash
+python assets-src/champion_fbx.py assets-src/Assassine_Running.fbx src/assets/models/Assassine.glb   # Blender (bpy)
+python3 assets-src/glb_textures.py src/assets/models/Assassine.glb 1024
+```
+
 ## 3D-Modell des Nexus
 
 Der Nexus ist ein Tripo-Modell (roter Kristall auf verziertem Sockel). `assets-src/nexus.py` setzt den

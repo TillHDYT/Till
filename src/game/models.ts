@@ -142,6 +142,13 @@ export async function loadChampionModels() {
         const gltf = await loadGlbOffline(url);
         const clip = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
         if (!clip) throw new Error("keine Animation im Modell");
+        // Exporte beginnen oft bei Bild 1 statt bei 0: Zyklus auf 0 schieben, sonst stockt die Schleife kurz
+        const start = Math.min(...clip.tracks.map((t) => t.times[0]));
+        if (start > 0) {
+          // neue Arrays: der Loader teilt die Zeit-Arrays zwischen Spuren, shift() würde sie mehrfach verschieben
+          for (const t of clip.tracks) t.times = Float32Array.from(t.times, (v) => v - start);
+          clip.resetDuration();
+        }
         gltf.scene.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(gltf.scene);
         let noUv = false;
