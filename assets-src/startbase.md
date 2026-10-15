@@ -14,6 +14,6 @@ python3 startbase/orient.py sb60.glb sb60_o.glb 9.6
 gltfpack -i sb60_o.glb -o startbase.glb -kn -km
 ```
 
-Im Spiel (`models.ts`, `loadStartBase`) wird das Modell um 0.95 abgesenkt, damit die runde Plattform
-(Oberkante im Modell bei y = 1.37) so hoch liegt wie die frühere gebaute Basis. Das rote Team bekommt eine
-umgefärbte Textur (blaue Banner und Runen werden rot). Klappt das Laden nicht, bleibt die gebaute Ersatz-Basis.
+Im Spiel (`models.ts`, `loadStartBase`) wird das Modell um 0.96 abgesenkt, damit die runde Plattform
+(Oberkante im Modell im Mittel bei y = 1.38) so hoch liegt wie die frühere gebaute Basis. Das rote Team bekommt eine
+umgefärbte Textur (blaue Banner, Runen, Kristalle und der Stern in der Mitte werden rot). Klappt das Laden nicht, bleibt die gebaute Ersatz-Basis.

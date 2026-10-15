@@ -1241,8 +1241,14 @@ function emblemTexture(team: 0 | 1) {
 
 type StartBaseAsset = { model: THREE.Object3D; materials: [THREE.Material, THREE.Material] };
 let startBase: StartBaseAsset | null = null;
-/** Das Modell liegt mit der Plattform-Oberkante bei y = 1.37; so weit absenken, dass sie wie früher bei 0.42 liegt. */
-const START_BASE_SINK = 0.95;
+/**
+ * Die runde Plattform liegt im Modell im Mittel bei y = 1.38 (gemessen über r < 4.75, die Rille um den Stern bei 1.34);
+ * so weit absenken, dass sie wie früher bei 0.42 über dem Wurzelpunkt liegt. Dann bleibt sie überall knapp über dem
+ * Boden (0.42 + 0.12 Wurzel), der unter der Basis liegt, und Champions stehen wie früher auf ihr.
+ */
+const START_BASE_SINK = 0.96;
+/** Heilring auf dem Plattformboden direkt außerhalb der untersten Stufe (Boden 0.42, Wurzel 0.12). */
+const START_BASE_RING = { r: 5.35, y: 0.33 };
 
 /** Lädt die Startbasis einmalig. Bei einem Fehler bleibt die gebaute Ersatz-Basis. */
 export async function loadStartBase(): Promise<boolean> {
@@ -1286,15 +1292,15 @@ function buildFountainModel(team: 0 | 1, asset: StartBaseAsset) {
     }
   });
   root.add(model);
-  // Heilring am Plattformrand
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(7.25, 0.07, 6, 64), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
+  // Heilring um die Plattform (lag vorher bei y = 0.06 unter der Plattform und war unsichtbar)
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(START_BASE_RING.r, 0.07, 6, 64), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
   ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.06;
+  ring.position.y = START_BASE_RING.y;
   root.add(ring);
   return root;
 }
 
-/** Färbt blaue Stoff- und Leuchtflächen rot, Stein, Moos und Gold bleiben wie sie sind. */
+/** Färbt blaue und türkise Stoff- und Leuchtflächen (Banner, Runen, Kristalle, Stern) rot; Stein, Moos und Gold bleiben. */
 function recolorBlueToRed(img: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = img.width;
@@ -1308,12 +1314,15 @@ function recolorBlueToRed(img: CanvasImageSource & { width: number; height: numb
     const r = p[i];
     const gr = p[i + 1];
     const b = p[i + 2];
-    // Anteil "Blau", weich ausgeblendet, damit graublauer Stein kaum betroffen ist
-    const k = Math.min(1, (b - Math.max(r, gr) * 1.25) / (b * 0.3 + 1));
+    // Anteil "Blau/Türkis" gegenüber Rot, weich ausgeblendet: graublauer Stein bleibt, Moos (Grün > Blau) auch
+    const mx = Math.max(gr, b);
+    const blue = Math.min(1, Math.max(0, ((mx - r) / (mx + 1) - 0.18) / 0.22));
+    const notGreen = Math.min(1, Math.max(0, (b - gr * 0.82) / (b * 0.25 + 1)));
+    const k = blue * notGreen;
     if (k <= 0) continue;
-    p[i] = r + (Math.min(255, b * 1.05) - r) * k;
-    p[i + 1] = gr + (Math.min(gr, r) * 0.6 - gr) * k;
-    p[i + 2] = b + (r * 0.8 - b) * k;
+    p[i] = r + (Math.min(255, mx * 1.02) - r) * k;
+    p[i + 1] = gr + (Math.min(r, gr) * 0.45 + r * 0.15 - gr) * k;
+    p[i + 2] = b + (r * 0.55 + Math.min(r, b) * 0.2 - b) * k;
   }
   g.putImageData(data, 0, 0);
   return c;
