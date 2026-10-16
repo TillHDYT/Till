@@ -1,6 +1,6 @@
 import type { ChampDef, Role } from "./champions";
 import { ITEM_BY_ID, type StatMods } from "./items";
-import type { CampKind, LaneId, V2 } from "./mapdata";
+import { CHAMP_SIZE, MONSTER_RADIUS, MONSTER_SIZE, type CampKind, type LaneId, type V2 } from "./mapdata";
 
 export type Kind = "champion" | "minion" | "turret" | "inhib" | "nexus" | "monster";
 export type Side = 0 | 1 | 2;
@@ -204,7 +204,7 @@ export class Champion extends Unit {
     this.lane = role === "top" ? "top" : role === "mid" ? "mid" : role === "jungle" ? "mid" : "bot";
     this.spell2 = role === "jungle" ? "smite" : "heal";
     this.name = name;
-    this.height = 2.6 * def.look.bulk;
+    this.height = 2.6 * def.look.bulk * CHAMP_SIZE;
     this.applyLevel();
     this.hp = this.stats.maxHp;
     this.mana = this.stats.maxMana;
@@ -432,7 +432,7 @@ export class Monster extends Unit {
         break;
     }
     if (mkind !== "dragon" && mkind !== "baron") base.ad *= 0.6;
-    super("monster", 2, pos.x, pos.z, r, base);
+    super("monster", 2, pos.x, pos.z, r * MONSTER_RADIUS, base);
     this.camp = camp;
     this.mkind = mkind;
     this.big = big;
@@ -440,6 +440,6 @@ export class Monster extends Unit {
     this.gold = gold;
     this.xp = xp;
     this.label = label;
-    this.height = r * 2.2 + 0.6;
+    this.height = (r * 2.2 + 0.6) * MONSTER_SIZE;
   }
 }

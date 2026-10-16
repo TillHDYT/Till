@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { Look } from "./champions";
-import type { CampKind } from "./mapdata";
+import { CHAMP_SIZE, MONSTER_SIZE, type CampKind } from "./mapdata";
 import { colored, mat4 } from "./terrain";
 import detailUrl from "../assets/detail.jpg";
 import bannerRedUrl from "../assets/banner_red.png";
@@ -161,7 +161,8 @@ CHAMP_ANIMS["monster:blue"] = {
   death: { url: warrokDeathUrl, file: "src/assets/models/Warrok_Death.glb (aus Jungle Monster Sterbe Animation.fbx)" },
 };
 /** Höhe der Monster-Modelle im Spiel. */
-const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 3.6 };
+// Warrok steht gebückt, daher größer als die Höhe in der Grundhaltung
+const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
 const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, "monster:blue": 5 };
 
@@ -438,7 +439,7 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   const body = new THREE.Group();
   root.add(body);
   // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
-  const { model, rig } = buildRig(asset, 2.6 * look.bulk);
+  const { model, rig } = buildRig(asset, 2.6 * look.bulk * CHAMP_SIZE);
   if (asset.noUv) applyLookMaterials(model, look);
   body.add(model);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
@@ -485,7 +486,7 @@ export function buildRigMonster(kind: CampKind, big: boolean): { root: THREE.Gro
   const asset = big ? rigAssets.get(id) : undefined;
   if (!asset) return null;
   const root = new THREE.Group();
-  const { model, rig } = buildRig(asset, MONSTER_HEIGHT[id] ?? 3);
+  const { model, rig } = buildRig(asset, (MONSTER_HEIGHT[id] ?? 3) * MONSTER_SIZE);
   root.add(model);
   return { root, glow: null, rig };
 }
@@ -609,7 +610,7 @@ export function buildChampion(look: Look, ringColor: number, id?: string): Champ
       break;
   }
 
-  body.scale.setScalar(b);
+  body.scale.setScalar(b * CHAMP_SIZE);
 
   const ring = champRing(ringColor);
   root.add(ring);
@@ -800,6 +801,7 @@ export function buildMonster(kind: CampKind, big: boolean): { root: THREE.Group;
       break;
     }
   }
+  root.scale.multiplyScalar(MONSTER_SIZE);
   return { root, glow };
 }
 

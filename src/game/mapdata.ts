@@ -79,9 +79,16 @@ const BLUE_CAMPS: { kind: CampKind; pos: V2 }[] = [
 ];
 
 /** Kuhle (Mulde im Boden) jedes Dschungel-Camps: Radius, in dem die Monster stehen; frei von Baumkronen. */
-export const CAMP_PIT: Partial<Record<CampKind, number>> = { blue: 4.8, red: 4.8, gromp: 4.2, wolves: 4.5, raptors: 4.6, krugs: 4.4 };
+export const CAMP_PIT: Partial<Record<CampKind, number>> = { blue: 6, red: 6, gromp: 5.3, wolves: 5.7, raptors: 5.8, krugs: 5.5 };
 /** Tiefe der Kuhlen. */
 export const CAMP_PIT_DEPTH = 0.45;
+
+/** Größe der Champions gegenüber der Karte (Modell, Lebensleiste). */
+export const CHAMP_SIZE = 1.4;
+/** Größe der Dschungelmonster gegenüber ihren Grundmaßen (Modell, Lebensleiste). */
+export const MONSTER_SIZE = 2;
+/** Trefferzone (Radius) der Dschungelmonster wächst mit, damit niemand im Modell steht. */
+export const MONSTER_RADIUS = 1.5;
 
 export const BARON_POS = v(63, 55);
 export const DRAGON_POS = mirror(BARON_POS);

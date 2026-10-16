@@ -5,6 +5,7 @@ import {
   FOUNTAIN,
   FOUNTAIN_RADIUS,
   MAP,
+  MONSTER_RADIUS,
   SPAWN,
   STRUCTURES,
   distToSegment,
@@ -1203,7 +1204,7 @@ export class World {
     const scale = 1 + Math.min(1.2, this.t / 1000);
     for (let i = 0; i < n; i++) {
       const a = (i / Math.max(1, n - 1)) * Math.PI * 1.2 + (camp.side === 1 ? Math.PI : 0);
-      const off = i === 0 ? 0 : 2.4;
+      const off = i === 0 ? 0 : 2.4 * MONSTER_RADIUS;
       const pos = { x: camp.pos.x + Math.cos(a) * off, z: camp.pos.z + Math.sin(a) * off };
       const m = new Monster(camp.id, camp.kind, i === 0, pos, scale);
       m.facing = Math.random() * Math.PI * 2;

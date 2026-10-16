@@ -65,15 +65,16 @@ function pointInPoly(p: V2, poly: V2[]) {
   return inside;
 }
 
+// Lichtungen um die Camps: Platz für die großen Monster und ihre Kuhlen (CAMP_PIT)
 const CLEARING: Record<string, number> = {
-  gromp: 6.5,
-  wolves: 6.5,
-  raptors: 6.5,
-  krugs: 6.5,
-  baron: 9,
-  dragon: 9,
-  blue: 8,
-  red: 8,
+  gromp: 8,
+  wolves: 8,
+  raptors: 8,
+  krugs: 8,
+  baron: 10.5,
+  dragon: 10.5,
+  blue: 9,
+  red: 9,
   scuttle: 5,
 };
 

@@ -1,6 +1,6 @@
 import type { Champion, Unit } from "./units";
 import type { World } from "./world";
-import type { V2 } from "./mapdata";
+import { MONSTER_RADIUS, type V2 } from "./mapdata";
 
 export type Role = "top" | "jungle" | "mid" | "bot" | "support";
 export type Targeting = "self" | "dir" | "point" | "unit";
@@ -551,7 +551,7 @@ export const CHAMPIONS: ChampDef[] = [
             noStructures: true,
             onHit: (u) => {
               w.damage(c, u, dmg, "magic", { ability: true });
-              if (u.kind !== "monster" || u.radius < 1.5) {
+              if (u.kind !== "monster" || u.radius < 1.5 * MONSTER_RADIUS) {
                 const dx = c.x - u.x;
                 const dz = c.z - u.z;
                 const len = Math.hypot(dx, dz) || 1;
