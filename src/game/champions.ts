@@ -291,133 +291,10 @@ export const CHAMPIONS: ChampDef[] = [
     ],
   },
   {
-    id: "ignis",
-    name: "Ignis",
-    title: "der Flammenweber",
-    role: "mid",
-    roleName: "Magier",
-    ranged: true,
-    projectile: "bolt",
-    color: "#ff8a3c",
-    base: { hp: 545, mana: 420, ad: 52, armor: 22, mr: 30, as: 0.63, range: 8, ms: 6.8, hpReg: 1.3, manaReg: 2.2 },
-    growth: { hp: 86, mana: 50, ad: 3, armor: 4, mr: 1.3, as: 2 },
-    levelOrder: [3, 0, 1, 2],
-    build: ["boots", "timestaff", "deathcap", "voidstaff", "spiritcloak", "swiftboots"],
-    look: { body: 0x6a2c8a, accent: 0xffa040, skin: 0xd9a27c, hair: 0xff6020, weapon: "staff", bulk: 0.95, cape: 0x3f1a5a },
-    abilities: [
-      {
-        name: "Feuerball",
-        desc: "Schleudert einen Feuerball, der beim ersten Treffer explodiert.",
-        icon: "🔥",
-        targeting: "dir",
-        range: 11,
-        width: 1.2,
-        cd: [4.5, 4, 3.5, 3],
-        mana: [40, 45, 50, 55],
-        ai: "poke",
-        cast: (w, c, aim, rank) => {
-          const d = dirFrom(c, aim);
-          const dmg = r4([80, 125, 170, 215], rank) + c.stats.ap * 0.75;
-          c.anim.cast = 0.35;
-          w.skillshot(c, {
-            dx: d.dx,
-            dz: d.dz,
-            speed: 22,
-            range: 11,
-            width: 1.0,
-            visual: "fireball",
-            color: 0xff7a20,
-            onHit: (u) => {
-              w.damage(c, u, dmg, "magic", { ability: true });
-              w.fx({ type: "burst", x: u.x, z: u.z, r: 2.2, color: 0xff8a30, owner: c });
-              for (const o of w.enemiesInRadius(c.team, u.x, u.z, 2.2)) if (o !== u) w.damage(c, o, dmg * 0.5, "magic", { ability: true });
-              return true;
-            },
-          });
-        },
-      },
-      {
-        name: "Flammensäule",
-        desc: "Nach kurzer Verzögerung bricht eine Feuersäule aus und betäubt.",
-        icon: "🌋",
-        targeting: "point",
-        range: 10,
-        radius: 3.2,
-        cd: [11, 10, 9, 8],
-        mana: [70, 75, 80, 85],
-        ai: "poke",
-        cast: (w, c, aim, rank) => {
-          const p = clampAim(c, aim, 10);
-          const dmg = r4([75, 120, 165, 210], rank) + c.stats.ap * 0.65;
-          c.anim.cast = 0.35;
-          w.area(c, {
-            x: p.x,
-            z: p.z,
-            radius: 3.2,
-            delay: 0.7,
-            visual: "pillar",
-            color: 0xff6a1a,
-            onTrigger: (a) => {
-              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
-                w.damage(c, u, dmg, "magic", { ability: true });
-                w.stun(u, 1.0);
-              }
-            },
-          });
-        },
-      },
-      {
-        name: "Glutsprung",
-        desc: "Teleportiert sich ein Stück und läuft kurz schneller.",
-        icon: "✨",
-        targeting: "dir",
-        range: 6,
-        cd: [16, 14.5, 13, 11.5],
-        mana: [60, 60, 60, 60],
-        ai: "escape",
-        cast: (w, c, aim) => {
-          const d = dirFrom(c, aim);
-          w.blink(c, c.x + d.dx * 6, c.z + d.dz * 6, 0xff8a30);
-          w.addBuff(c, { id: "ignisE", until: w.t + 1.5, mods: { ms: 25 } });
-        },
-      },
-      {
-        name: "Meteor",
-        desc: "Ruft einen Meteor herab. Riesiger Schaden und brennender Boden.",
-        icon: "☄️",
-        targeting: "point",
-        range: 16,
-        radius: 5,
-        cd: [80, 70, 60],
-        mana: [100, 100, 100],
-        ai: "engage",
-        cast: (w, c, aim, rank) => {
-          const p = clampAim(c, aim, 16);
-          const dmg = r4([220, 340, 460], rank) + c.stats.ap * 0.9;
-          c.anim.cast = 0.6;
-          w.area(c, {
-            x: p.x,
-            z: p.z,
-            radius: 5,
-            delay: 1.1,
-            visual: "meteor",
-            color: 0xff4a10,
-            onTrigger: (a) => {
-              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
-                w.damage(c, u, dmg, "magic", { ability: true });
-                w.slow(u, 0.35, 2);
-              }
-            },
-          });
-        },
-      },
-    ],
-  },
-  {
     id: "kira",
     name: "Kira",
     title: "die Schattenklinge",
-    role: "jungle",
+    role: "mid",
     roleName: "Assassinin",
     ranged: false,
     color: "#b061ff",
@@ -655,7 +532,7 @@ export const CHAMPIONS: ChampDef[] = [
     id: "thorne",
     name: "Thorne",
     title: "der Felsenhüter",
-    role: "support",
+    role: "jungle",
     roleName: "Tank",
     ranged: false,
     color: "#7fd27a",
@@ -768,6 +645,129 @@ export const CHAMPIONS: ChampDef[] = [
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.stun(u, 1.25);
+              }
+            },
+          });
+        },
+      },
+    ],
+  },
+  {
+    id: "ignis",
+    name: "Ignis",
+    title: "der Flammenweber",
+    role: "mid",
+    roleName: "Magier",
+    ranged: true,
+    projectile: "bolt",
+    color: "#ff8a3c",
+    base: { hp: 545, mana: 420, ad: 52, armor: 22, mr: 30, as: 0.63, range: 8, ms: 6.8, hpReg: 1.3, manaReg: 2.2 },
+    growth: { hp: 86, mana: 50, ad: 3, armor: 4, mr: 1.3, as: 2 },
+    levelOrder: [3, 0, 1, 2],
+    build: ["boots", "timestaff", "deathcap", "voidstaff", "spiritcloak", "swiftboots"],
+    look: { body: 0x6a2c8a, accent: 0xffa040, skin: 0xd9a27c, hair: 0xff6020, weapon: "staff", bulk: 0.95, cape: 0x3f1a5a },
+    abilities: [
+      {
+        name: "Feuerball",
+        desc: "Schleudert einen Feuerball, der beim ersten Treffer explodiert.",
+        icon: "🔥",
+        targeting: "dir",
+        range: 11,
+        width: 1.2,
+        cd: [4.5, 4, 3.5, 3],
+        mana: [40, 45, 50, 55],
+        ai: "poke",
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
+          const dmg = r4([80, 125, 170, 215], rank) + c.stats.ap * 0.75;
+          c.anim.cast = 0.35;
+          w.skillshot(c, {
+            dx: d.dx,
+            dz: d.dz,
+            speed: 22,
+            range: 11,
+            width: 1.0,
+            visual: "fireball",
+            color: 0xff7a20,
+            onHit: (u) => {
+              w.damage(c, u, dmg, "magic", { ability: true });
+              w.fx({ type: "burst", x: u.x, z: u.z, r: 2.2, color: 0xff8a30, owner: c });
+              for (const o of w.enemiesInRadius(c.team, u.x, u.z, 2.2)) if (o !== u) w.damage(c, o, dmg * 0.5, "magic", { ability: true });
+              return true;
+            },
+          });
+        },
+      },
+      {
+        name: "Flammensäule",
+        desc: "Nach kurzer Verzögerung bricht eine Feuersäule aus und betäubt.",
+        icon: "🌋",
+        targeting: "point",
+        range: 10,
+        radius: 3.2,
+        cd: [11, 10, 9, 8],
+        mana: [70, 75, 80, 85],
+        ai: "poke",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 10);
+          const dmg = r4([75, 120, 165, 210], rank) + c.stats.ap * 0.65;
+          c.anim.cast = 0.35;
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: 3.2,
+            delay: 0.7,
+            visual: "pillar",
+            color: 0xff6a1a,
+            onTrigger: (a) => {
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.damage(c, u, dmg, "magic", { ability: true });
+                w.stun(u, 1.0);
+              }
+            },
+          });
+        },
+      },
+      {
+        name: "Glutsprung",
+        desc: "Teleportiert sich ein Stück und läuft kurz schneller.",
+        icon: "✨",
+        targeting: "dir",
+        range: 6,
+        cd: [16, 14.5, 13, 11.5],
+        mana: [60, 60, 60, 60],
+        ai: "escape",
+        cast: (w, c, aim) => {
+          const d = dirFrom(c, aim);
+          w.blink(c, c.x + d.dx * 6, c.z + d.dz * 6, 0xff8a30);
+          w.addBuff(c, { id: "ignisE", until: w.t + 1.5, mods: { ms: 25 } });
+        },
+      },
+      {
+        name: "Meteor",
+        desc: "Ruft einen Meteor herab. Riesiger Schaden und brennender Boden.",
+        icon: "☄️",
+        targeting: "point",
+        range: 16,
+        radius: 5,
+        cd: [80, 70, 60],
+        mana: [100, 100, 100],
+        ai: "engage",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 16);
+          const dmg = r4([220, 340, 460], rank) + c.stats.ap * 0.9;
+          c.anim.cast = 0.6;
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: 5,
+            delay: 1.1,
+            visual: "meteor",
+            color: 0xff4a10,
+            onTrigger: (a) => {
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.damage(c, u, dmg, "magic", { ability: true });
+                w.slow(u, 0.35, 2);
               }
             },
           });

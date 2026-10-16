@@ -173,7 +173,7 @@ Elara ist die Mixamo-Figur „Nightshade“ (`Supporter ….fbx`). Grundangriff:
 1,15-2,15 s der Angriffsanimation gekürzt, das Geschoss fliegt beim Stoß der Hände. Fähigkeiten: Q Mondstrahl
 (Schaden, Verlangsamung), W Heilendes Licht (sie und der schwächste Verbündete in der Nähe), E Schutzsegen (Schild und
 Tempo für Verbündete in der Nähe), R Mondfall (großer Lichtkreis: Schaden und Betäubung für Gegner, Heilung für
-Verbündete). Bots nehmen für Support Elara; Thorne bleibt wählbar.
+Verbündete).
 
 ## 3D-Modell der Inhibitoren
 
