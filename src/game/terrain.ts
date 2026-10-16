@@ -302,6 +302,77 @@ function groundMask(grid: NavGrid, res: number) {
   return tex;
 }
 
+/** Länge einer Kachel der Wegtextur entlang der Lane und Breite, über die sie quer reicht (Einheiten). */
+const PATH_TILE = 15;
+
+/** Ecken abrunden (Chaikin), damit die Wegtextur in den Lane-Kurven nicht springt. */
+function smoothLine(pts: { x: number; z: number }[], iter = 3) {
+  let p = pts;
+  for (let k = 0; k < iter; k++) {
+    const q = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i];
+      const b = p[i + 1];
+      q.push({ x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25 }, { x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75 });
+    }
+    q.push(p[p.length - 1]);
+    p = q;
+  }
+  return p;
+}
+
+/**
+ * Lane-Koordinaten für die Wegtextur: R/G = Lage entlang der Lane als Winkel (cos/sin, damit das Wiederholen beim
+ * Filtern keine Naht gibt), B = Lage quer zur Lane (0..1 über PATH_TILE, Mitte 0.5).
+ */
+function laneCoords(grid: NavGrid, res: number) {
+  const lines = (["top", "mid", "bot"] as LaneId[]).map((id) => {
+    const pts = smoothLine(LANES[id]);
+    const acc = [0];
+    for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+    return { pts, acc };
+  });
+  const sLane = sampler(grid, grid.lane);
+  const data = new Uint8Array(res * res * 4);
+  const k = MAP / res;
+  for (let py = 0; py < res; py++) {
+    const z = (py + 0.5) * k;
+    for (let px = 0; px < res; px++) {
+      const x = (px + 0.5) * k;
+      const o = (py * res + px) * 4;
+      if (sLane(x, z) < 0.005) continue;
+      let best = Infinity;
+      let along = 0;
+      let across = 0;
+      for (const { pts, acc } of lines) {
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i];
+          const dx = pts[i + 1].x - a.x;
+          const dz = pts[i + 1].z - a.z;
+          const len = acc[i + 1] - acc[i];
+          const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (len * len)));
+          const d = Math.hypot(a.x + dx * t - x, a.z + dz * t - z);
+          if (d < best) {
+            best = d;
+            along = acc[i] + t * len;
+            across = ((x - a.x) * dz - (z - a.z) * dx) / len;
+          }
+        }
+      }
+      const ang = (along / PATH_TILE) * Math.PI * 2;
+      data[o] = Math.round((Math.cos(ang) * 0.5 + 0.5) * 255);
+      data[o + 1] = Math.round((Math.sin(ang) * 0.5 + 0.5) * 255);
+      data[o + 2] = Math.round(Math.max(0.02, Math.min(0.98, 0.5 + across / PATH_TILE)) * 255);
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /** Läd die gemalte Grastextur (kachelbar). */
 export function loadGrass(url: string = grassUrl): THREE.Texture {
   const t = new THREE.TextureLoader().load(url);
@@ -590,6 +661,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     uStone: { value: loadGrass(stoneUrl) },
     uRock: { value: loadGrass(rockUrl) },
     uGMask: { value: groundMask(grid, high ? 512 : 320) },
+    uLane: { value: laneCoords(grid, high ? 1024 : 640) },
     uGrassScale: { value: 1 / 7.5 },
     uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
   };
@@ -603,7 +675,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vWN;\nuniform sampler2D uGrass;\nuniform sampler2D uPath;\nuniform sampler2D uStone;\nuniform sampler2D uRock;\nuniform sampler2D uGMask;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;",
+          "#include <common>\nvarying vec3 vWN;\nuniform sampler2D uGrass;\nuniform sampler2D uPath;\nuniform sampler2D uStone;\nuniform sampler2D uRock;\nuniform sampler2D uGMask;\nuniform sampler2D uLane;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;",
         )
         .replace(
           "#include <map_fragment>",
@@ -615,12 +687,23 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           vec3 g2 = texture2D(uGrass, rp).rgb;
           float macro = texture2D(uGrass, vFogW.xz * 0.011).g * 8.0;
           vec3 grassCol = mix(g1, g2, smoothstep(0.35, 0.65, fract(macro))) * uGrassTint * gMask.g;
-          // Weg: Lane-Textur (Erde mit Steinplatten), zwei gedrehte Lagen gegen sichtbare Wiederholung
+          // Weg: Lane-Textur als Streifen entlang der Lane (Steinplatten in der Mitte, Erde und Gras zum Rand),
+          // in den Camps einfach über die Welt gekachelt
           if (gMask.b > 0.004) {
-            vec2 pp = vFogW.xz / 15.0;
-            vec3 p1 = texture2D(uPath, pp).rgb;
-            vec3 p2 = texture2D(uPath, mat2(0.6, 0.8, -0.8, 0.6) * pp * 0.8 + 0.5).rgb;
-            vec3 pathCol = mix(p1, p2, 0.35) * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
+            vec4 lc = texture2D(uLane, vFogW.xz / ${MAP.toFixed(1)});
+            vec2 wp = vFogW.xz / ${PATH_TILE.toFixed(1)};
+            vec2 pp = wp;
+            vec2 ddx = dFdx(wp);
+            vec2 ddy = dFdy(wp);
+            if (lc.a > 0.5) {
+              pp = vec2(atan(lc.g * 2.0 - 1.0, lc.r * 2.0 - 1.0) / 6.2831853, lc.b);
+              // Ableitungen ohne den Sprung beim Umlauf, sonst wählt die Mipmap an der Naht die kleinste Stufe
+              ddx = dFdx(pp);
+              ddy = dFdy(pp);
+              ddx.x -= floor(ddx.x + 0.5);
+              ddy.x -= floor(ddy.x + 0.5);
+            }
+            vec3 pathCol = textureGrad(uPath, pp, ddx, ddy).rgb * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
             diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
           }
           // Basis: Steinplatten, leicht in Teamfarbe getönt
