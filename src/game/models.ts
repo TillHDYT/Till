@@ -14,10 +14,11 @@ import nexusUrl from "../assets/nexus.glb";
 import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
-import daggersUrl from "../assets/daggers.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
-import assassinAttackUrl from "../assets/models/Assassine_Attack.glb";
+import kiraUrl from "../assets/models/Kira.glb";
+import kiraAttack1Url from "../assets/models/Kira_Attack1.glb";
+import kiraAttack2Url from "../assets/models/Kira_Attack2.glb";
 import tankUrl from "../assets/models/Tank.glb";
 import tankIdleUrl from "../assets/models/Tank_Idle.glb";
 import tankAttackUrl from "../assets/models/Tank_Attack.glb";
@@ -139,13 +140,19 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: kiraUrl, thorne: tankUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
-type AnimSrc = { url: string; file: string };
-const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
+/** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
+ *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
+type AnimSrc = { url: string; file: string; hit?: number };
+const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
+  // Kira: Modell mit den Schwertern in den Händen (Mixamo, Klingen starr am Handknochen, assets-src/rigid_swords.py);
+  // Laufen, Stehen und Sterben vom früheren Kira-Modell mit gleichem Mixamo-Skelett
   kira: {
+    run: { url: assassinUrl, file: "src/assets/models/Assassine.glb (Laufanimation)" },
     idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)" },
-    attack: { url: assassinAttackUrl, file: "src/assets/models/Assassine_Attack.glb (aus Boxing.fbx)" },
+    attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 1.101 },
+    attack2: { url: kiraAttack2Url, file: "src/assets/models/Kira_Attack2.glb (aus SchwertSchlagAnimation2.fbx)", hit: 1.067 },
     death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)" },
   },
   thorne: {
@@ -177,6 +184,8 @@ type RigAsset = {
   /** weitere Schlaganimationen (abwechselnd mit attack) */
   attack2: THREE.AnimationClip | null;
   death: THREE.AnimationClip | null;
+  /** Treffermoment je Schlag als Anteil am Clip (leer = ohne Abgleich) */
+  hitFrac: number[];
   height: number;
   minY: number;
   rest: number[];
@@ -235,74 +244,16 @@ export type ChampRig = {
   selfDur: number;
   lastAtk: number;
   atkRepeat: number;
+  /** Champions mit zwei Schlägen: Treffermoment je Schlag (Anteil am Clip) und Fortschritt im letzten Bild */
+  hitFrac: number[];
+  lastSwing: number;
   /** Sterbeanimation (falls vorhanden) und Zeit seit dem Tod */
   death: THREE.AnimationAction | null;
   deathT: number;
 };
 
 /** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
-/**
- * Waffen als eigene, starre Modelle an den Handknochen (verbiegen sich nicht mit der Haut).
- * pos/rot im Raum des Handknochens (Mixamo: +y zeigt zu den Fingern), len = Länge im Spiel.
- */
-type PropSpec = { node: string; bone: string; pos: [number, number, number]; rot: [number, number, number]; len: number };
-const CHAMP_PROPS: Record<string, PropSpec[]> = {
-  kira: [
-    // Griff in der Faust (zwischen Fingerknöcheln und Handballen), Klinge kommt auf der Daumenseite heraus,
-    // entlang der Linie Kleinfinger -> Zeigefinger gemessen
-    { node: "DaggerR", bone: "mixamorigRightHand", pos: [-0.01, 0.25, 0.065], rot: [0, 0, -1.11], len: 1.15 },
-    { node: "DaggerL", bone: "mixamorigLeftHand", pos: [0.01, 0.25, 0.065], rot: [0, 0, 1.11], len: 1.15 },
-  ],
-};
-/** Modelle der Waffen nach Knotenname (Geometrie mit Drehpunkt am Griff, Klinge nach +y, Länge = Höhe der Box) */
-const propMeshes = new Map<string, { mesh: THREE.Mesh; len: number }>();
-let propEnv: THREE.Texture | null = null;
-
-async function loadProps() {
-  try {
-    const gltf = await loadGlbOffline(daggersUrl);
-    gltf.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
-      const mat = m.material as THREE.MeshStandardMaterial;
-      if (mat.map) mat.map.anisotropy = 4;
-      if (propEnv) mat.envMap = propEnv;
-      mat.envMapIntensity = 0.8;
-      m.geometry.computeBoundingBox();
-      const b = m.geometry.boundingBox!;
-      // der Knoten heißt DaggerL/DaggerR, das Mesh darunter hat den Namen aus dem Modell
-      const name = m.parent && m.parent.name.startsWith("Dagger") ? m.parent.name : m.name;
-      propMeshes.set(name, { mesh: m, len: b.max.y - b.min.y });
-    });
-  } catch (err) {
-    console.error("Waffenmodelle konnten nicht geladen werden, Champions bleiben ohne:", err);
-  }
-}
-
-/** Waffen an die Handknochen des Modells hängen; Größe unabhängig vom Maßstab des Skeletts. */
-function attachProps(id: string, model: THREE.Object3D) {
-  const specs = CHAMP_PROPS[id];
-  if (!specs) return;
-  model.updateMatrixWorld(true);
-  const ws = new THREE.Vector3();
-  for (const sp of specs) {
-    const src = propMeshes.get(sp.node);
-    const bone = model.getObjectByName(sp.bone);
-    if (!src || !bone) continue;
-    const m = new THREE.Mesh(src.mesh.geometry, src.mesh.material);
-    m.name = sp.node;
-    m.castShadow = true;
-    bone.getWorldScale(ws);
-    const k = sp.len / src.len / ws.x;
-    m.scale.setScalar(k);
-    m.position.set(sp.pos[0] / ws.x, sp.pos[1] / ws.x, sp.pos[2] / ws.x);
-    m.rotation.set(...sp.rot);
-    bone.add(m);
-  }
-}
-
 export async function loadChampionModels() {
-  const props = loadProps();
   await Promise.all(
     Object.entries({ ...CHAMP_MODELS, ...MONSTER_MODELS }).map(async ([id, url]) => {
       if (rigAssets.has(id)) return;
@@ -310,29 +261,41 @@ export async function loadChampionModels() {
         const gltf = await loadGlbOffline(url);
         const found = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
         if (!found) throw new Error("keine Animation im Modell");
-        const clip = clipFromZero(found);
         const anims = CHAMP_ANIMS[id] ?? {};
-        const [idle, attack, attack2, death] = await Promise.all([
+        const [run, idle, attack, attack2, death] = await Promise.all([
+          loadExtraClip(anims.run, id, "Lauf"),
           loadExtraClip(anims.idle, id, "Steh"),
           loadExtraClip(anims.attack, id, "Schlag"),
           loadExtraClip(anims.attack2, id, "Zweite Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
         ]);
+        const clip = run ?? clipFromZero(found);
+        const hitFrac = [attack && anims.attack?.hit, attack2 && anims.attack2?.hit].flatMap((h, i) => (h ? [h / [attack, attack2][i]!.duration] : []));
         gltf.scene.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(gltf.scene);
+        // Höhe und Fußpunkt in der ersten Laufhaltung messen (mit Skelett verformt); die Grundform des Netzes kann bei
+        // Mixamo-Modellen anders liegen als die Haltung im Spiel
+        // (nur bei Laufanimation aus einem anderen Modell; die übrigen Modelle bleiben bei ihren abgestimmten Maßen)
+        let box = new THREE.Box3().setFromObject(gltf.scene);
+        if (run) {
+          const probe = cloneSkinned(gltf.scene);
+          const pm = new THREE.AnimationMixer(probe);
+          pm.clipAction(clip).play();
+          pm.update(0);
+          probe.updateMatrixWorld(true);
+          box = new THREE.Box3().setFromObject(probe, true);
+        }
         let noUv = false;
         gltf.scene.traverse((o) => {
           if ((o as THREE.Mesh).isMesh && !(o as THREE.Mesh).geometry.getAttribute("uv")) noUv = true;
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, death, hitFrac: hitFrac.length === 2 ? hitFrac : [], height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
     }),
   );
-  await props;
 }
 
 /** Zeitpunkte im Laufzyklus, an denen die Füße am dichtesten beieinander sind: dort wirkt das Stehenbleiben ruhig. */
@@ -396,8 +359,19 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
     for (const r of rig.rest) ahead = Math.min(ahead, (r - rig.t + rig.dur) % rig.dur);
     rig.t = (rig.t + Math.min(ahead, Math.max(dt * 0.12, ahead * Math.min(1, dt * 5)))) % rig.dur;
   }
+  // Champion mit zwei Schlägen: bei jedem neuen Schlag der Spiellogik wechseln
+  if (rig.hitFrac.length > 1 && swing >= 0 && (rig.lastSwing < 0 || swing < rig.lastSwing - 0.2)) nextAttack(rig);
+  rig.lastSwing = swing;
   if (rig.attack) {
-    if (swing >= 0) rig.atkTime = Math.min(1, swing) * rig.attack.getClip().duration;
+    let f = Math.min(1, swing);
+    const i = rig.attacks.indexOf(rig.attack);
+    if (rig.hitFrac.length > 1 && i > 0) {
+      // Zeit so dehnen, dass der Treffer dieses Schlags auf den Treffermoment der Spiellogik (= erster Schlag) fällt
+      const ph = rig.hitFrac[0];
+      const h = rig.hitFrac[i];
+      f = f <= ph ? (f / ph) * h : h + ((f - ph) / (1 - ph)) * (1 - h);
+    }
+    if (swing >= 0) rig.atkTime = f * rig.attack.getClip().duration;
     rig.atkW += ((swing >= 0 ? 1 : 0) - rig.atkW) * Math.min(1, dt * 14);
     if (rig.atkW < 0.001) rig.atkW = 0;
   }
@@ -432,6 +406,17 @@ function setRigWeights(rig: ChampRig, run: number, idle: number, attack: number,
   rig.death?.setEffectiveWeight(death);
 }
 
+/** Nächste Schlaganimation wählen: meist die andere, gelegentlich dieselbe noch einmal, nie dreimal hintereinander. */
+function nextAttack(rig: ChampRig) {
+  const cur = rig.attacks.indexOf(rig.attack!);
+  const again = cur >= 0 && rig.atkRepeat < 1 && Math.random() < 0.25;
+  const next = rig.attacks.length > 1 && !again ? (cur + 1) % rig.attacks.length : Math.max(0, cur);
+  rig.atkRepeat = next === cur ? rig.atkRepeat + 1 : 0;
+  if (rig.attack && rig.atkW > 0.05 && next !== cur) rig.prev = { action: rig.attack, time: rig.atkTime, w: rig.atkW };
+  rig.attack = rig.attacks[next];
+  rig.atkTime = 0;
+}
+
 /**
  * Schlag eines Monsters mit Modell: Die Spiellogik meldet nur, dass angegriffen wurde (anim.atk springt auf 1).
  * Dann spielt eine der Schlaganimationen, meist im Wechsel und nie lange dieselbe, mit weichem Übergang.
@@ -439,15 +424,8 @@ function setRigWeights(rig: ChampRig, run: number, idle: number, attack: number,
  */
 export function monsterSwing(rig: ChampRig, atk: number, as: number, dt: number) {
   if (atk > rig.lastAtk + 0.3 && rig.attacks.length) {
-    const cur = rig.attacks.indexOf(rig.attack!);
-    // meist die andere Animation, gelegentlich dieselbe noch einmal, aber nie dreimal hintereinander
-    const again = cur >= 0 && rig.atkRepeat < 1 && Math.random() < 0.25;
-    const next = rig.attacks.length > 1 && !again ? (cur + 1) % rig.attacks.length : Math.max(0, cur);
-    rig.atkRepeat = next === cur ? rig.atkRepeat + 1 : 0;
-    if (rig.attack && rig.atkW > 0.05 && next !== cur) rig.prev = { action: rig.attack, time: rig.atkTime, w: rig.atkW };
-    rig.attack = rig.attacks[next];
-    rig.atkTime = 0;
-    const d = rig.attack.getClip().duration;
+    nextAttack(rig);
+    const d = rig.attack!.getClip().duration;
     rig.selfDur = d / Math.max(1, d * as);
     rig.selfT = 0;
   }
@@ -505,8 +483,6 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
   const { model, rig } = buildRig(asset, 2.6 * look.bulk * CHAMP_SIZE);
   if (asset.noUv) applyLookMaterials(model, look);
-  const id = [...rigAssets].find(([, a]) => a === asset)?.[0];
-  if (id) attachProps(id, model);
   body.add(model);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
   const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
@@ -540,7 +516,7 @@ function buildRig(asset: RigAsset, height: number) {
   const death = play(asset.death, 0);
   const rig: ChampRig = {
     mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model,
-    idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, death, deathT: 0,
+    idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, hitFrac: asset.hitFrac, lastSwing: -1, death, deathT: 0,
   };
   updateRig(rig, false, 0, 0);
   return { model, rig };
@@ -2225,13 +2201,6 @@ export function setGuardianEnvironment(renderer: THREE.WebGLRenderer) {
   for (const m of guardian.materials) {
     m.envMap = env;
     m.envMapIntensity = 0.55;
-    m.needsUpdate = true;
-  }
-  // Metall der Waffen spiegelt dieselbe Umgebung
-  propEnv = env;
-  for (const { mesh } of propMeshes.values()) {
-    const m = mesh.material as THREE.MeshStandardMaterial;
-    m.envMap = env;
     m.needsUpdate = true;
   }
 }

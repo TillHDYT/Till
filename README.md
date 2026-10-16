@@ -148,12 +148,14 @@ Mesh-Inseln in der Mitte) als eigenes Teil `Crystal` ab, glättet die Normalen u
 python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.glb src/assets/
 ```
 
-## Kiras Dolche
+## Kiras Modell mit Schwertern
 
-Die Dolche sind ein eigenes, starres Modell (`src/assets/daggers.glb` aus `Schwerter 3D Modell.fbx`, das eigentlich ein
-ZIP mit FBX und Texturen ist; Aufbereitung mit `assets-src/daggers.py` und `glb_textures.py ... 1024`). Im Spiel hängen
-sie an den Handknochen (`CHAMP_PROPS` in `models.ts`), dadurch bewegen sie sich mit jeder Animation mit, ohne sich zu
-verbiegen.
+Kira ist das Meshy-Modell mit den Schwertern in den Händen, in Mixamo geriggt. Weil Mixamo die mit den Händen
+verschmolzenen Klingen auf Unterarm und Finger verteilt (sie verbiegen sich), macht `assets-src/rigid_swords.py`
+Faust, Griff und Klinge starr: alles außerhalb des Handgelenks gehört zu 100 % dem Handknochen. Danach
+`champion_fbx.py` (Modell `Kira.glb`) und `champion_anim.py --treffer` (`Kira_Attack1.glb`, `Kira_Attack2.glb`).
+Die zwei Schwertschläge wechseln sich ab; der zweite wird so gedehnt, dass sein Treffer auf den Schadensmoment fällt.
+Laufen, Stehen und Sterben kommen vom früheren Kira-Modell (gleiches Mixamo-Skelett).
 
 ## 3D-Modell der Inhibitoren
 

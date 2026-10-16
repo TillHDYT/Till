@@ -423,7 +423,8 @@ export const CHAMPIONS: ChampDef[] = [
     look: { body: 0x2a1c3c, accent: 0xb061ff, skin: 0xe0bfa0, hair: 0x15101e, weapon: "daggers", bulk: 1.08, cape: 0x45206e },
     // Boxing.fbx: 50 Bilder bei 30 fps; die rechte Faust ist bei Bild 16,5 am weitesten vorne (gemessen mit
     // assets-src/champion_anim.py --treffer). Hier anpassen, falls der Treffer früher oder später sitzen soll.
-    swing: { clip: 50 / 30, hit: 15.5 / 30 },
+    // Schwertschlag 1 (Kira_Attack1.glb, 117 Bilder bei 60 fps); Schlag 2 wird auf denselben Treffer gedehnt
+    swing: { clip: 117 / 60, hit: 66.05 / 60 },
     abilities: [
       {
         name: "Dolchwurf",
