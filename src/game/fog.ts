@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { MAP } from "./mapdata";
 
 // Nebel des Krieges: eine kleine Textur über die Karte, 1 = sichtbar.
-export const FOG_RES = 128;
+export const FOG_RES = 160;
 
 export class FogOfWar {
   readonly data = new Uint8Array(FOG_RES * FOG_RES);

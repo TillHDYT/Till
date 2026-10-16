@@ -1,13 +1,16 @@
 // Layout der Kluft. Koordinaten in Welt-Einheiten, x nach Osten, z nach Süden.
 // Blau sitzt unten links, Rot oben rechts. Rot ist die Punktspiegelung von Blau.
 
-export const MAP = 200;
+/** Vergrößerung der Karte: alle Positionen unten sind auf 200 x 200 angegeben und werden damit gestreckt
+ *  (Breiten von Lanes, Fluss und Wegen und die Größe der Figuren bleiben gleich). */
+export const MAP_SCALE = 1.25;
+export const MAP = 200 * MAP_SCALE;
 
 export type V2 = { x: number; z: number };
 export type Team = 0 | 1;
 export type LaneId = "top" | "mid" | "bot";
 
-export const v = (x: number, z: number): V2 => ({ x, z });
+export const v = (x: number, z: number): V2 => ({ x: x * MAP_SCALE, z: z * MAP_SCALE });
 /** Punktspiegelung auf die rote Seite. */
 export const mirror = (p: V2): V2 => ({ x: MAP - p.x, z: MAP - p.z });
 
@@ -168,7 +171,8 @@ export const RIVER_WIDTH = 15;
 
 /** Basisplattform: Quadrat in der Ecke, Innenecke zur Kartenmitte abgeschrägt. */
 export function inBaseArea(team: Team, p: V2) {
-  const q = team === 0 ? p : mirror(p);
+  const m = team === 0 ? p : mirror(p);
+  const q = { x: m.x / MAP_SCALE, z: m.z / MAP_SCALE };
   if (q.x < 5 || q.x > 57 || q.z < 143 || q.z > 195) return false;
   // abgeschrägte Innenecke (oben rechts aus blauer Sicht)
   if (q.x - q.z > 57 - 143 - 18) return false;

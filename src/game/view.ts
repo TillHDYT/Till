@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { applyCameraCut } from "./camcut";
-import { FogOfWar } from "./fog";
+import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
-import { FOUNTAIN, type V2 } from "./mapdata";
+import { FOUNTAIN, MAP, type V2 } from "./mapdata";
 import {
   TEAM_COLOR,
   TEAM_GLOW,
@@ -104,7 +104,7 @@ export class View {
     FOUNTAIN.forEach((f, i) => {
       const fo = buildFountain(i as 0 | 1);
       fo.position.set(f.x, 0.12, f.z);
-      fo.rotation.y = Math.atan2(100 - f.x, 100 - f.z);
+      fo.rotation.y = Math.atan2(MAP / 2 - f.x, MAP / 2 - f.z);
       applyCameraCut(fo);
       scene.add(fo);
       // Feuer in den Feuerschalen der Startbasis
@@ -758,7 +758,8 @@ export class View {
 
   fogVisibleAt(x: number, z: number) {
     const d = this.fog.data;
-    const i = Math.min(127, Math.max(0, Math.floor((z / 200) * 128))) * 128 + Math.min(127, Math.max(0, Math.floor((x / 200) * 128)));
+    const k = FOG_RES / MAP;
+    const i = Math.min(FOG_RES - 1, Math.max(0, Math.floor(z * k))) * FOG_RES + Math.min(FOG_RES - 1, Math.max(0, Math.floor(x * k)));
     return d[i] > 120;
   }
 
