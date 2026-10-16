@@ -1,6 +1,8 @@
 import {
   BRUSHES,
   CAMPS,
+  CAMP_PIT,
+  CAMP_PIT_DEPTH,
   FOUNTAIN,
   FOUNTAIN_RADIUS,
   LANES,
@@ -378,6 +380,22 @@ export class NavGrid {
         const k = smooth(0, 1.5, d);
         const wall = 2.2 + Math.min(d, 6) * 0.3 + fbm(px * 0.3, pz * 0.3) * 1.0;
         h[z * (N + 1) + x] = open + (wall - open) * k;
+      }
+    }
+    // Kuhlen der Dschungel-Camps: flache Mulde, zum Rand weich ansteigend, mit leichtem Wall
+    for (const c of CAMPS) {
+      const r = CAMP_PIT[c.kind];
+      if (!r) continue;
+      const ext = Math.ceil((r + 1.6) * R);
+      const cx = Math.round(c.pos.x * R);
+      const cz = Math.round(c.pos.z * R);
+      for (let z = Math.max(0, cz - ext); z <= Math.min(N, cz + ext); z++) {
+        for (let x = Math.max(0, cx - ext); x <= Math.min(N, cx + ext); x++) {
+          const d = Math.hypot(x / R - c.pos.x, z / R - c.pos.z);
+          const dip = CAMP_PIT_DEPTH * (1 - smooth(r * 0.55, r, d));
+          const rim = 0.12 * Math.max(0, 1 - Math.abs(d - (r + 0.5)) / 0.8);
+          h[z * (N + 1) + x] += rim - dip;
+        }
       }
     }
     this.heights = h;

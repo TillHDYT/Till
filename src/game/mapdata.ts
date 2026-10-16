@@ -78,6 +78,11 @@ const BLUE_CAMPS: { kind: CampKind; pos: V2 }[] = [
   { kind: "krugs", pos: v(118, 170) },
 ];
 
+/** Kuhle (Mulde im Boden) jedes Dschungel-Camps: Radius, in dem die Monster stehen; frei von Baumkronen. */
+export const CAMP_PIT: Partial<Record<CampKind, number>> = { blue: 4.8, red: 4.8, gromp: 4.2, wolves: 4.5, raptors: 4.6, krugs: 4.4 };
+/** Tiefe der Kuhlen. */
+export const CAMP_PIT_DEPTH = 0.45;
+
 export const BARON_POS = v(63, 55);
 export const DRAGON_POS = mirror(BARON_POS);
 

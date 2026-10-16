@@ -1119,7 +1119,8 @@ export class World {
     if (this.minions.length > 260 || (this.minions.length > 40 && Math.random() < 0.02)) {
       this.minions = this.minions.filter((m) => m.alive || t - m.diedAt < 1.2);
     }
-    if (Math.random() < 0.02) this.monsters = this.monsters.filter((m) => m.alive || t - m.diedAt < 1.5);
+    // tote Monster etwas aufheben, damit Monster mit Modell ihre Sterbeanimation zu Ende spielen
+    if (Math.random() < 0.02) this.monsters = this.monsters.filter((m) => m.alive || t - m.diedAt < 4);
   }
 
   private updateFxOnly(dt: number) {

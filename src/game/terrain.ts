@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { addCutUniforms } from "./camcut";
 import type { FogOfWar } from "./fog";
-import { BARON_POS, BRUSHES, CAMPS, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
+import { BARON_POS, BRUSHES, CAMPS, CAMP_PIT, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { fbm, noise2, rng, type NavGrid } from "./navgrid";
 import grassUrl from "../assets/grass.jpg";
 import leavesUrl from "../assets/leaves.png";
@@ -228,15 +228,20 @@ function paintGround(grid: NavGrid, size: number): HTMLCanvasElement {
   };
   pit(BARON_POS, "rgba(90,50,130,0.55)");
   pit(DRAGON_POS, "rgba(130,70,30,0.5)");
-  // Camp-Lichtungen leicht erdig
+  // Kuhlen der Camps: erdiger Boden, zum Rand hin Steine (siehe CAMP_PIT)
   for (const c of CAMPS) {
-    if (c.kind === "baron" || c.kind === "dragon" || c.kind === "scuttle") continue;
-    const g = ctx.createRadialGradient(c.pos.x * S, c.pos.z * S, 0, c.pos.x * S, c.pos.z * S, 5 * S);
-    g.addColorStop(0, "rgba(110,90,60,0.45)");
+    const r = CAMP_PIT[c.kind];
+    if (!r) continue;
+    const g = ctx.createRadialGradient(c.pos.x * S, c.pos.z * S, 0, c.pos.x * S, c.pos.z * S, (r + 0.9) * S);
+    const e = r / (r + 0.9);
+    g.addColorStop(0, "rgba(92,72,48,0.62)");
+    g.addColorStop(e * 0.7, "rgba(104,82,54,0.55)");
+    g.addColorStop(e * 0.93, "rgba(120,114,100,0.62)");
+    g.addColorStop(e * 1.02, "rgba(132,126,112,0.55)");
     g.addColorStop(1, "rgba(110,90,60,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(c.pos.x * S, c.pos.z * S, 5 * S, 0, Math.PI * 2);
+    ctx.arc(c.pos.x * S, c.pos.z * S, (r + 0.9) * S, 0, Math.PI * 2);
     ctx.fill();
   }
   return canvas;
@@ -267,13 +272,25 @@ function groundMask(grid: NavGrid, res: number) {
       let shade = 0.74 + 0.26 * sstep(0, 2.5, sd);
       shade = shade * (1 - wall) + 0.5 * wall;
       shade *= 0.9 + fbm(x * 0.06 + 11, z * 0.06) * 0.2;
+      // Kuhlen der Camps: Erdboden (Wegtextur) innen, Steinring (Steinboden) am Rand, etwas dunkler zur Mitte
+      let pitFloor = 0;
+      let pitRing = 0;
+      for (const c of CAMPS) {
+        const r = CAMP_PIT[c.kind];
+        if (!r) continue;
+        const d = Math.hypot(x - c.pos.x, z - c.pos.z) + jit * 0.8;
+        if (d > r + 1.2) continue;
+        pitFloor = Math.max(pitFloor, 1 - sstep(r * 0.78, r * 0.9, d));
+        pitRing = Math.max(pitRing, sstep(r * 0.78, r * 0.9, d) * (1 - sstep(r + 0.35, r + 0.75, d)));
+        shade *= 0.82 + 0.18 * sstep(0, r, d);
+      }
       const o = (py * res + px) * 4;
-      data[o] = Math.round(Math.max(0, Math.min(1, grass)) * 255);
+      data[o] = Math.round(Math.max(0, Math.min(1, grass * (1 - pitFloor - pitRing))) * 255);
       data[o + 1] = Math.round(Math.max(0, Math.min(1, shade)) * 255);
       // B: Weg (Lane), A: Steinboden der Basis
       const laneW = sstep(0.2, 0.6, lane + jit * 0.8) * (1 - sstep(0.1, 0.5, base)) * (1 - sstep(0.15, 0.5, river));
-      data[o + 2] = Math.round(laneW * (1 - wall) * 255);
-      data[o + 3] = Math.round(sstep(0.25, 0.6, base) * 255);
+      data[o + 2] = Math.round(Math.max(laneW * (1 - wall), pitFloor) * 255);
+      data[o + 3] = Math.round(Math.max(sstep(0.25, 0.6, base), pitRing) * 255);
     }
   }
   const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -778,6 +795,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     const v = 0.85 + rand() * 0.3;
     if (kind === 0) c.setRGB(v * (0.36 + rand() * 0.1), v * (0.5 + rand() * 0.08), v * (0.5 + rand() * 0.1));
     else c.setRGB(v * (0.55 + rand() * 0.25), v * (0.72 + rand() * 0.15), v * (0.62 + rand() * 0.2));
+    // keine Baumkronen über den Kuhlen der Camps (Monster sollen frei darin stehen)
+    if (CAMPS.some((cp) => CAMP_PIT[cp.kind] && Math.hypot(cp.pos.x - x, cp.pos.z - z) < CAMP_PIT[cp.kind]! + 0.6 + 2.8 * s)) return;
     buckets[kind][chunkOf(x, z)].push({ m, c });
   };
   for (let gz = 0; gz < MAP; gz += step) {
@@ -842,6 +861,20 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     const s = 0.4 + rand() ** 2 * 1.3;
     const m = mat4(x, grid.heightAt(x, z) - 0.2 * s, z, s * (0.9 + rand() * 0.5), s * (0.7 + rand() * 0.5), s, (rand() - 0.5) * 0.4, rand() * 6, (rand() - 0.5) * 0.4);
     rockBuckets[i % 2][chunkOf(x, z)].push(m);
+  }
+  // Steine auf dem Rand jeder Camp-Kuhle (feste Anordnung, Lücken zum Hineinlaufen)
+  for (const cp of CAMPS) {
+    const r = CAMP_PIT[cp.kind];
+    if (!r) continue;
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      if (i % 3 === 1) continue;
+      const a = (i / n) * Math.PI * 2 + cp.pos.x * 0.37;
+      const x = cp.pos.x + Math.cos(a) * (r + 0.45);
+      const z = cp.pos.z + Math.sin(a) * (r + 0.45);
+      const sc = 0.45 + ((i * 7919 + cp.pos.z * 13) % 10) * 0.03;
+      rockBuckets[i % 2][chunkOf(x, z)].push(mat4(x, grid.heightAt(x, z) - 0.12 * sc, z, sc * 1.2, sc * 0.75, sc, 0, a * 3.1, 0));
+    }
   }
   boulders.forEach((geo, k) => {
     for (const list of rockBuckets[k]) {

@@ -9,10 +9,13 @@ import {
   buildBrazier,
   buildChampion,
   updateRig,
+  type ChampRig,
   addStartBaseFires,
   buildFountain,
   buildInhibitor,
   buildMonster,
+  buildRigMonster,
+  monsterSwing,
   buildNexus,
   buildTurret,
   glowSprite,
@@ -35,7 +38,7 @@ function angleLerp(a: number, b: number, t: number) {
 }
 
 type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; beam: THREE.Mesh | null; shield: THREE.Mesh };
-type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number };
+type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number; rig?: ChampRig };
 type StructView = {
   model: StructModel;
   unit: Structure;
@@ -407,12 +410,15 @@ export class View {
     const g = w.grid;
     const alive = new Set<number>();
     for (const m of w.monsters) {
-      if (!m.alive && w.t - m.diedAt > 1) continue;
+      const existing = this.mons.get(m.id);
+      // Monster mit Modell spielen ihre Sterbeanimation (knapp 4 s), die gebauten versinken nach 1 s
+      if (!m.alive && w.t - m.diedAt > (existing?.rig ? 3.8 : 1)) continue;
       alive.add(m.id);
-      let v = this.mons.get(m.id);
+      let v = existing;
       if (!v) {
-        const built = buildMonster(m.mkind, m.big);
-        v = { root: built.root, glow: built.glow, unit: m, facing: m.facing };
+        const rigged = buildRigMonster(m.mkind, m.big);
+        const built = rigged ?? buildMonster(m.mkind, m.big);
+        v = { root: built.root, glow: built.glow, unit: m, facing: m.facing, rig: rigged?.rig };
         this.scene.add(v.root);
         this.mons.set(m.id, v);
       }
@@ -421,6 +427,13 @@ export class View {
       v.facing = angleLerp(v.facing, m.facing, Math.min(1, dt * 6));
       v.root.rotation.y = v.facing;
       let y = g.groundAt(m.x, m.z);
+      if (v.rig) {
+        // Stehen, Laufen, zwei Schläge im Wechsel und Tod aus den Animationen des Modells
+        const swing = m.alive ? monsterSwing(v.rig, m.anim.atk, m.stats.as, dt) : -1;
+        updateRig(v.rig, m.alive && m.anim.moving, m.anim.speed, dt, swing, !m.alive);
+        v.root.position.set(m.x, y, m.z);
+        continue;
+      }
       if (!m.alive) {
         const k = (w.t - m.diedAt) / 1;
         y -= k * 1.5;

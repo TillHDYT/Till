@@ -20,6 +20,11 @@ import tankUrl from "../assets/models/Tank.glb";
 import tankIdleUrl from "../assets/models/Tank_Idle.glb";
 import tankAttackUrl from "../assets/models/Tank_Attack.glb";
 import tankDeathUrl from "../assets/models/Tank_Death.glb";
+import warrokUrl from "../assets/models/Warrok.glb";
+import warrokIdleUrl from "../assets/models/Warrok_Idle.glb";
+import warrokAttack1Url from "../assets/models/Warrok_Attack1.glb";
+import warrokAttack2Url from "../assets/models/Warrok_Attack2.glb";
+import warrokDeathUrl from "../assets/models/Warrok_Death.glb";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -135,7 +140,7 @@ export type ChampModel = {
 const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 type AnimSrc = { url: string; file: string };
-const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; death?: AnimSrc }> = {
+const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
   kira: {
     idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)" },
     attack: { url: assassinAttackUrl, file: "src/assets/models/Assassine_Attack.glb (aus Boxing.fbx)" },
@@ -147,8 +152,18 @@ const CHAMP_ANIMS: Record<string, { idle?: AnimSrc; attack?: AnimSrc; death?: An
     death: { url: tankDeathUrl, file: "src/assets/models/Tank_Death.glb (aus Tank Todes Animation.fbx)" },
   },
 };
+/** Dschungelmonster mit eigenem 3D-Modell (Schlüssel "monster:<Art>", nur das große Monster des Camps). */
+const MONSTER_MODELS: Record<string, string> = { "monster:blue": warrokUrl };
+CHAMP_ANIMS["monster:blue"] = {
+  idle: { url: warrokIdleUrl, file: "src/assets/models/Warrok_Idle.glb (aus Jungle Monster Animation stehend.fbx)" },
+  attack: { url: warrokAttack1Url, file: "src/assets/models/Warrok_Attack1.glb (aus Jungle Monster 1.SchlagAnimation.fbx)" },
+  attack2: { url: warrokAttack2Url, file: "src/assets/models/Warrok_Attack2.glb (aus Jungle Monster 2.SchlagAnimation.fbx)" },
+  death: { url: warrokDeathUrl, file: "src/assets/models/Warrok_Death.glb (aus Jungle Monster Sterbe Animation.fbx)" },
+};
+/** Höhe der Monster-Modelle im Spiel. */
+const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 3.6 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
-const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9 };
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, "monster:blue": 5 };
 
 type RigAsset = {
   scene: THREE.Object3D;
@@ -156,6 +171,8 @@ type RigAsset = {
   clip: THREE.AnimationClip;
   idle: THREE.AnimationClip | null;
   attack: THREE.AnimationClip | null;
+  /** weitere Schlaganimationen (abwechselnd mit attack) */
+  attack2: THREE.AnimationClip | null;
   death: THREE.AnimationClip | null;
   height: number;
   minY: number;
@@ -207,6 +224,14 @@ export type ChampRig = {
   attack: THREE.AnimationAction | null;
   atkW: number;
   atkTime: number;
+  /** alle Schlaganimationen; beim Wechsel blendet der vorige Schlag weich aus (prev) */
+  attacks: THREE.AnimationAction[];
+  prev: { action: THREE.AnimationAction; time: number; w: number } | null;
+  /** Monster: selbst geführter Schlag (Spiellogik meldet nur den Angriff), Zeit und Dauer in Sekunden */
+  selfT: number;
+  selfDur: number;
+  lastAtk: number;
+  atkRepeat: number;
   /** Sterbeanimation (falls vorhanden) und Zeit seit dem Tod */
   death: THREE.AnimationAction | null;
   deathT: number;
@@ -215,7 +240,7 @@ export type ChampRig = {
 /** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
 export async function loadChampionModels() {
   await Promise.all(
-    Object.entries(CHAMP_MODELS).map(async ([id, url]) => {
+    Object.entries({ ...CHAMP_MODELS, ...MONSTER_MODELS }).map(async ([id, url]) => {
       if (rigAssets.has(id)) return;
       try {
         const gltf = await loadGlbOffline(url);
@@ -223,9 +248,10 @@ export async function loadChampionModels() {
         if (!found) throw new Error("keine Animation im Modell");
         const clip = clipFromZero(found);
         const anims = CHAMP_ANIMS[id] ?? {};
-        const [idle, attack, death] = await Promise.all([
+        const [idle, attack, attack2, death] = await Promise.all([
           loadExtraClip(anims.idle, id, "Steh"),
           loadExtraClip(anims.attack, id, "Schlag"),
+          loadExtraClip(anims.attack2, id, "Zweite Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
         ]);
         gltf.scene.updateMatrixWorld(true);
@@ -236,7 +262,7 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, death, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
@@ -310,7 +336,13 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
     rig.atkW += ((swing >= 0 ? 1 : 0) - rig.atkW) * Math.min(1, dt * 14);
     if (rig.atkW < 0.001) rig.atkW = 0;
   }
-  const base = 1 - rig.atkW;
+  if (rig.prev) {
+    // voriger Schlag (andere Animation) blendet in ~0,15 s aus, der neue übernimmt
+    rig.prev.w = Math.max(0, rig.prev.w - dt * 7);
+    if (rig.prev.w <= 0) rig.prev = null;
+  }
+  const prevW = rig.prev ? Math.min(rig.prev.w, 1 - rig.atkW) : 0;
+  const base = Math.max(0, 1 - rig.atkW - prevW);
   const run = rig.idle ? rig.runW : 1;
   setRigWeights(rig, base * run, base * (1 - run), rig.atkW, 0);
   rig.mixer.update(0);
@@ -323,11 +355,45 @@ function setRigWeights(rig: ChampRig, run: number, idle: number, attack: number,
     rig.idle.time = rig.idleT;
     rig.idle.setEffectiveWeight(idle);
   }
-  if (rig.attack) {
-    rig.attack.time = rig.atkTime;
-    rig.attack.setEffectiveWeight(attack);
+  for (const a of rig.attacks) {
+    if (a === rig.attack) {
+      a.time = rig.atkTime;
+      a.setEffectiveWeight(attack);
+    } else if (rig.prev && a === rig.prev.action && attack + death < 1) {
+      a.time = rig.prev.time;
+      a.setEffectiveWeight(Math.min(rig.prev.w, 1 - attack));
+    } else a.setEffectiveWeight(0);
   }
   rig.death?.setEffectiveWeight(death);
+}
+
+/**
+ * Schlag eines Monsters mit Modell: Die Spiellogik meldet nur, dass angegriffen wurde (anim.atk springt auf 1).
+ * Dann spielt eine der Schlaganimationen, meist im Wechsel und nie lange dieselbe, mit weichem Übergang.
+ * Gibt den Fortschritt 0..1 des laufenden Schlags zurück (für updateRig), -1 = keiner.
+ */
+export function monsterSwing(rig: ChampRig, atk: number, as: number, dt: number) {
+  if (atk > rig.lastAtk + 0.3 && rig.attacks.length) {
+    const cur = rig.attacks.indexOf(rig.attack!);
+    // meist die andere Animation, gelegentlich dieselbe noch einmal, aber nie dreimal hintereinander
+    const again = cur >= 0 && rig.atkRepeat < 1 && Math.random() < 0.25;
+    const next = rig.attacks.length > 1 && !again ? (cur + 1) % rig.attacks.length : Math.max(0, cur);
+    rig.atkRepeat = next === cur ? rig.atkRepeat + 1 : 0;
+    if (rig.attack && rig.atkW > 0.05 && next !== cur) rig.prev = { action: rig.attack, time: rig.atkTime, w: rig.atkW };
+    rig.attack = rig.attacks[next];
+    rig.atkTime = 0;
+    const d = rig.attack.getClip().duration;
+    rig.selfDur = d / Math.max(1, d * as);
+    rig.selfT = 0;
+  }
+  rig.lastAtk = atk;
+  if (rig.selfT < 0) return -1;
+  rig.selfT += dt;
+  if (rig.selfT >= rig.selfDur) {
+    rig.selfT = -1;
+    return -1;
+  }
+  return rig.selfT / rig.selfDur;
 }
 
 /**
@@ -371,16 +437,27 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const model = cloneSkinned(asset.scene);
   // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
-  const k = (2.6 * look.bulk) / asset.height;
+  const { model, rig } = buildRig(asset, 2.6 * look.bulk);
+  if (asset.noUv) applyLookMaterials(model, look);
+  body.add(model);
+  // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
+  const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
+  body.add(...limbs);
+  const ring = champRing(ringColor);
+  root.add(ring);
+  return { root, body, armL: limbs[0], armR: limbs[1], legL: limbs[2], legR: limbs[3], ring, glow: null, rig };
+}
+
+/** Modell mit Skelett auf die gewünschte Höhe bringen und alle Animationen anlegen. */
+function buildRig(asset: RigAsset, height: number) {
+  const model = cloneSkinned(asset.scene);
+  const k = height / asset.height;
   model.scale.multiplyScalar(k);
   model.position.y = -asset.minY * k;
   model.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
   });
-  if (asset.noUv) applyLookMaterials(model, look);
-  body.add(model);
   const mixer = new THREE.AnimationMixer(model);
   const play = (clip: THREE.AnimationClip | null, weight: number) => {
     if (!clip) return null;
@@ -392,15 +469,25 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   const action = play(asset.clip, 1)!;
   const idle = play(asset.idle, 0);
   const attack = play(asset.attack, 0);
+  const attacks = [attack, play(asset.attack2, 0)].filter((a): a is THREE.AnimationAction => !!a);
   const death = play(asset.death, 0);
-  const rig: ChampRig = { mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model, idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, death, deathT: 0 };
+  const rig: ChampRig = {
+    mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model,
+    idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, death, deathT: 0,
+  };
   updateRig(rig, false, 0, 0);
-  // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
-  const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
-  body.add(...limbs);
-  const ring = champRing(ringColor);
-  root.add(ring);
-  return { root, body, armL: limbs[0], armR: limbs[1], legL: limbs[2], legR: limbs[3], ring, glow: null, rig };
+  return { model, rig };
+}
+
+/** Dschungelmonster aus einem 3D-Modell mit Skelett (falls vorhanden), sonst null. */
+export function buildRigMonster(kind: CampKind, big: boolean): { root: THREE.Group; glow: null; rig: ChampRig } | null {
+  const id = `monster:${kind}`;
+  const asset = big ? rigAssets.get(id) : undefined;
+  if (!asset) return null;
+  const root = new THREE.Group();
+  const { model, rig } = buildRig(asset, MONSTER_HEIGHT[id] ?? 3);
+  root.add(model);
+  return { root, glow: null, rig };
 }
 
 export function buildChampion(look: Look, ringColor: number, id?: string): ChampModel {
