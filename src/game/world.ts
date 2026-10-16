@@ -1695,7 +1695,9 @@ export class World {
       return;
     }
     if (m.stunned(t)) return;
-    const leash = m.mkind === "baron" || m.mkind === "dragon" ? 14 : 11;
+    // Camp-Monster verfolgen, solange das Ziel im Dschungel bleibt (bis höchstens 20 vom Camp); Baron und Drache bleiben nah
+    const epic = m.mkind === "baron" || m.mkind === "dragon";
+    const leash = epic ? 14 : 20;
     if (m.resetting) {
       m.hp = Math.min(m.stats.maxHp, m.hp + m.stats.maxHp * 0.25 * dt);
       const dx = m.home.x - m.x;
@@ -1712,7 +1714,8 @@ export class World {
       return;
     }
     const tg = m.target;
-    if (!tg || !tg.alive || dist(m.home, tg) > leash + 4 || dist(m, m.home) > leash || (tg.team !== 2 && !tg.vis[0] && !tg.vis[1])) {
+    const leftJungle = !!tg && !epic && m.mkind !== "scuttle" && !this.grid.inJungle(tg.x, tg.z) && dist(m.home, tg) > 6;
+    if (!tg || !tg.alive || leftJungle || dist(m.home, tg) > leash + 4 || dist(m, m.home) > leash || (tg.team !== 2 && !tg.vis[0] && !tg.vis[1])) {
       if (m.target || dist(m, m.home) > 0.8) {
         m.target = null;
         m.resetting = true;

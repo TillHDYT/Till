@@ -2015,7 +2015,6 @@ let startBase: StartBaseAsset | null = null;
  */
 const START_BASE_SINK = 0.96;
 /** Heilring auf dem Plattformboden direkt außerhalb der untersten Stufe (Boden 0.42, Wurzel 0.12). */
-const START_BASE_RING = { r: 5.35, y: 0.33 };
 
 /** Lädt die Startbasis einmalig. Bei einem Fehler bleibt die gebaute Ersatz-Basis. */
 export async function loadStartBase(): Promise<boolean> {
@@ -2059,11 +2058,6 @@ function buildFountainModel(team: 0 | 1, asset: StartBaseAsset) {
     }
   });
   root.add(model);
-  // Heilring um die Plattform (lag vorher bei y = 0.06 unter der Plattform und war unsichtbar)
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(START_BASE_RING.r, 0.07, 6, 64), new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team] }));
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = START_BASE_RING.y;
-  root.add(ring);
   return root;
 }
 
@@ -2275,11 +2269,6 @@ export function buildFountain(team: 0 | 1) {
     g.position.copy(orb.position);
     root.add(g);
   }
-  // Heilring am Plattformrand
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(7.25, 0.07, 6, 64), new THREE.MeshBasicMaterial({ color: col }));
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.44;
-  root.add(ring);
   return root;
 }
 

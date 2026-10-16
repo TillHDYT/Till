@@ -425,6 +425,13 @@ export class NavGrid {
     return this.brush[cz * this.n + cx];
   }
 
+  /** Liegt der Punkt im Dschungel (nicht auf einer Lane, im Fluss oder in einer Basis)? */
+  inJungle(x: number, z: number) {
+    if (!this.inBounds(x, z)) return false;
+    const i = Math.floor(z) * this.n + Math.floor(x);
+    return this.lane[i] < 0.3 && this.river[i] < 0.3 && this.base[i] < 0;
+  }
+
   heightAt(x: number, z: number) {
     const R = this.hres;
     const N = this.n * R;

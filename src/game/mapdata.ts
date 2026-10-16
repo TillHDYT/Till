@@ -69,13 +69,14 @@ export const SPAWN: [V2, V2] = [v(13, 187), mirror(v(13, 187))];
 export type CampKind = "blue" | "red" | "gromp" | "wolves" | "raptors" | "krugs" | "dragon" | "baron" | "scuttle";
 export type CampSpec = { id: string; kind: CampKind; pos: V2; side: Team | -1 };
 
+// Camp-Positionen wie in LoL (Koordinaten der Kluft auf 200 x 200 umgerechnet, z nach unten)
 const BLUE_CAMPS: { kind: CampKind; pos: V2 }[] = [
-  { kind: "blue", pos: v(45, 101) },
-  { kind: "gromp", pos: v(30, 86) },
-  { kind: "wolves", pos: v(50, 124) },
-  { kind: "raptors", pos: v(95, 137) },
-  { kind: "red", pos: v(102, 156) },
-  { kind: "krugs", pos: v(118, 170) },
+  { kind: "blue", pos: v(51, 93) },
+  { kind: "gromp", pos: v(31, 86) },
+  { kind: "wolves", pos: v(51, 113) },
+  { kind: "raptors", pos: v(92, 126) },
+  { kind: "red", pos: v(104, 145) },
+  { kind: "krugs", pos: v(113, 164) },
 ];
 
 /** Kuhle (Mulde im Boden) jedes Dschungel-Camps: Radius, in dem die Monster stehen; frei von Baumkronen. */
@@ -112,27 +113,27 @@ const path = (w: number, ...xz: number[]): Corridor => {
 };
 
 const BLUE_PATHS: Corridor[] = [
-  // linker Jungle (zwischen Top und Mid)
-  path(7, 18, 84, 30, 86, 45, 101),
-  path(7.5, 45, 101, 50, 124, 46, 138),
-  path(6.5, 50, 124, 60, 128, 70, 128),
-  path(7, 45, 101, 58, 90, 64, 76),
-  path(6.5, 30, 86, 32, 70, 40, 54),
-  path(7, 45, 101, 66, 106, 88, 110),
-  path(6, 18, 118, 34, 120, 50, 124),
+  // linker Jungle (zwischen Top und Mid): Kröte - Blauer Wächter - Wölfe
+  path(7, 18, 84, 31, 86, 51, 93),
+  path(7.5, 51, 93, 51, 113, 56, 128, 60, 140),
+  path(6.5, 51, 113, 62, 118, 72, 122),
+  path(7, 51, 93, 60, 84, 64, 76),
+  path(6.5, 31, 86, 32, 70, 40, 54),
+  path(7, 51, 93, 68, 102, 88, 108),
+  path(6, 18, 118, 34, 118, 51, 113),
   path(6, 32, 70, 52, 72, 64, 76),
   path(6, 20, 44, 30, 46, 40, 54),
-  // unterer Jungle (zwischen Mid und Bot)
-  path(7.5, 58, 162, 78, 158, 102, 156),
-  path(7, 102, 156, 118, 170, 124, 182),
-  path(7, 102, 156, 95, 137, 84, 122),
-  path(6.5, 95, 137, 112, 124),
-  path(7, 102, 156, 124, 150, 136, 142),
-  path(6.5, 118, 170, 140, 168, 156, 178),
-  path(6.5, 82, 182, 82, 168, 78, 158),
-  path(6, 112, 124, 128, 130, 136, 142),
-  path(6, 124, 150, 146, 152, 156, 160),
-  path(6, 64, 140, 76, 146, 78, 158),
+  // unterer Jungle (zwischen Mid und Bot): Raptoren - Roter Wächter - Golems
+  path(7.5, 58, 162, 80, 152, 104, 145),
+  path(7, 104, 145, 113, 164, 120, 180),
+  path(7, 104, 145, 92, 126, 84, 118),
+  path(6.5, 92, 126, 110, 118),
+  path(7, 104, 145, 124, 146, 136, 140),
+  path(6.5, 113, 164, 140, 166, 156, 178),
+  path(6.5, 82, 182, 82, 168, 80, 152),
+  path(6, 110, 118, 126, 128, 136, 140),
+  path(6, 124, 146, 146, 150, 156, 160),
+  path(6, 64, 140, 74, 144, 80, 152),
 ];
 
 export const CORRIDORS: Corridor[] = [
