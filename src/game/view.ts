@@ -9,6 +9,7 @@ import {
   buildBrazier,
   buildChampion,
   updateRig,
+  playCast,
   type ChampRig,
   addStartBaseFires,
   buildFountain,
@@ -232,6 +233,13 @@ export class View {
 
     this.handleFx();
 
+    // Fähigkeiten-Animationen der Modelle starten
+    for (const e of w.events) {
+      if (e.type !== "cast") continue;
+      const rig = this.champs.get(e.unit.id)?.model.rig;
+      if (rig) playCast(rig, e.slot);
+    }
+
     // Champions
     for (const v of this.champs.values()) {
       const c = v.unit;
@@ -240,7 +248,8 @@ export class View {
       m.root.visible = c.alive ? visible : w.t - c.diedAt < 3.5 && (this.seen(c) || c.team === this.playerTeam);
       if (!m.root.visible) continue;
       let y = g.groundAt(c.x, c.z);
-      if (c.dash?.leap) {
+      // Sprung: Höhe aus der Spiellogik, außer das Modell springt in seiner eigenen Fähigkeiten-Animation
+      if (c.dash?.leap && !(m.rig?.cast && m.rig.cast.w > 0.3)) {
         const total = c.dash.total || 1;
         const done = Math.hypot(c.x - c.dash.sx, c.z - c.dash.sz) / total;
         y += Math.sin(Math.min(1, done) * Math.PI) * 3.2;
@@ -270,7 +279,7 @@ export class View {
       m.body.position.y = 0;
 
       // Modelle mit Skelett: Stehen, Laufen und Schlag aus ihren Animationen, sonst schwingende Glieder
-      if (m.rig) updateRig(m.rig, c.anim.moving, c.anim.speed, dt, c.anim.swing);
+      if (m.rig) updateRig(m.rig, c.anim.moving && !c.dash, c.anim.speed, dt, c.anim.swing);
       if (c.anim.moving) c.anim.walk += dt * (c.anim.speed || 6) * 1.5;
       else c.anim.walk *= 0.85;
       const sw = c.anim.moving ? Math.sin(c.anim.walk) : 0;

@@ -19,6 +19,15 @@ import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
 import elaraDeathUrl from "../assets/models/Elara_Death.glb";
 import elaraIdleUrl from "../assets/models/Elara_Idle.glb";
 import lyraUrl from "../assets/models/Lyra.glb";
+import varokUrl from "../assets/models/Varok.glb";
+import varokIdleUrl from "../assets/models/Varok_Idle.glb";
+import varokDeathUrl from "../assets/models/Varok_Death.glb";
+import varokAttack1Url from "../assets/models/Varok_Attack1.glb";
+import varokAttack2Url from "../assets/models/Varok_Attack2.glb";
+import varokQUrl from "../assets/models/Varok_Q.glb";
+import varokWUrl from "../assets/models/Varok_W.glb";
+import varokEUrl from "../assets/models/Varok_E.glb";
+import varokRUrl from "../assets/models/Varok_R.glb";
 import lyraAttackUrl from "../assets/models/Lyra_Attack.glb";
 import lyraDeathUrl from "../assets/models/Lyra_Death.glb";
 import lyraIdleUrl from "../assets/models/Lyra_Idle.glb";
@@ -148,15 +157,28 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl, lyra: lyraUrl, elara: elaraUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl, lyra: lyraUrl, elara: elaraUrl, varok: varokUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
 /** fremd: Animation eines anderen Modells mit gleichem Skelett; ihre Hüfthöhe wird an dieses Modell angepasst. */
 /** spiegeln: Animation seitenverkehrt abspielen (linke und rechte Knochen getauscht, z. B. derselbe Stich mit dem anderen Arm). */
-type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean };
+type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean; rate?: number };
 /** fist: Fingerhaltung (erstes Bild) für Laufen, Stehen und Schläge, z. B. eine geschlossene Faust um eine Waffe. */
-const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc; fist?: AnimSrc }> = {
+/** attack3: dritter Schlag; order: feste Reihenfolge der Schläge (Indizes in [attack, attack2, attack3]) statt Wechsel
+ *  nach Zufall. casts: Animation je Fähigkeit (Q, W, E, R), rate = Abspieltempo. */
+type ChampAnims = {
+  run?: AnimSrc;
+  idle?: AnimSrc;
+  attack?: AnimSrc;
+  attack2?: AnimSrc;
+  attack3?: AnimSrc;
+  order?: number[];
+  death?: AnimSrc;
+  fist?: AnimSrc;
+  casts?: (AnimSrc | null)[];
+};
+const CHAMP_ANIMS: Record<string, ChampAnims> = {
   // Kira: Mixamo-Modell (Schwerter auf dem Rücken) mit den Schwertern aus "Schwerter 3D Modell" in den Händen (CHAMP_PROPS);
   // Schwertstich vom Meshy-Modell mit gleichem Skelett (nur der Stich, --von/--bis), zweiter Stich gespiegelt;
   // Finger zur Faust aus der Boxanimation, damit die Hände die Schwerter halten
@@ -172,6 +194,22 @@ const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: Anim
     idle: { url: lyraIdleUrl, file: "src/assets/models/Lyra_Idle.glb (aus BogenSchütze stehend.fbx)" },
     attack: { url: lyraAttackUrl, file: "src/assets/models/Lyra_Attack.glb (aus BogenSchütze Schuss Animation.fbx, ab 0,80 s)" },
     death: { url: lyraDeathUrl, file: "src/assets/models/Lyra_Death.glb (aus BogenSchütze Todes Animation.fbx)" },
+  },
+  // Varok: Mixamo-Kriegerin „Maria“ mit Großschwert (eigenes Teil). Schläge in fester Reihenfolge: 1, 2, 1 gespiegelt, 2.
+  // Q, E und R bewegen sich in der Animation vorwärts; die Bewegung kommt aus dem Spiel (--auf-der-stelle)
+  varok: {
+    idle: { url: varokIdleUrl, file: "src/assets/models/Varok_Idle.glb (aus Krieger Stehend Animation.fbx)" },
+    attack: { url: varokAttack1Url, file: "src/assets/models/Varok_Attack1.glb (aus Krieger Schlag 1, 0,15-1,15 s)", hit: 0.48 },
+    attack2: { url: varokAttack2Url, file: "src/assets/models/Varok_Attack2.glb (aus Krieger Schlag 2, 0,55-1,45 s)", hit: 0.45 },
+    attack3: { url: varokAttack1Url, file: "src/assets/models/Varok_Attack1.glb (gespiegelt)", hit: 0.48, spiegeln: true },
+    order: [0, 1, 2, 1],
+    death: { url: varokDeathUrl, file: "src/assets/models/Varok_Death.glb (aus Krieger Todes Animation.fbx)" },
+    casts: [
+      { url: varokQUrl, file: "src/assets/models/Varok_Q.glb (aus Krieger Fähigkeit Q Animation.fbx)", rate: 1.3 },
+      { url: varokWUrl, file: "src/assets/models/Varok_W.glb (aus Krieger Fähigkeit W Animation.fbx, 0-2 s)", rate: 1.3 },
+      { url: varokEUrl, file: "src/assets/models/Varok_E.glb (aus Krieger Fähigkeit E Great Sword Slide Attack.fbx)", rate: 2 },
+      { url: varokRUrl, file: "src/assets/models/Varok_R.glb (aus Krieger Fähigkeit R Ultimate Animation.fbx)", rate: 1.3 },
+    ],
   },
   // Elara: Mixamo-Figur „Nightshade“, Magie aus den Händen
   elara: {
@@ -197,7 +235,7 @@ CHAMP_ANIMS["monster:blue"] = {
 // Warrok steht gebückt, daher größer als die Höhe in der Grundhaltung
 const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
-const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, "monster:blue": 5 };
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, varok: 7, "monster:blue": 5 };
 
 type RigAsset = {
   scene: THREE.Object3D;
@@ -207,6 +245,11 @@ type RigAsset = {
   attack: THREE.AnimationClip | null;
   /** weitere Schlaganimationen (abwechselnd mit attack) */
   attack2: THREE.AnimationClip | null;
+  attack3: THREE.AnimationClip | null;
+  order: number[];
+  /** Fähigkeiten-Animationen (Q, W, E, R) und ihr Abspieltempo */
+  casts: (THREE.AnimationClip | null)[];
+  castRates: number[];
   death: THREE.AnimationClip | null;
   /** Treffermoment je Schlag als Anteil am Clip (leer = ohne Abgleich) */
   hitFrac: number[];
@@ -354,6 +397,13 @@ export type ChampRig = {
   /** Champions mit zwei Schlägen: Treffermoment je Schlag (Anteil am Clip) und Fortschritt im letzten Bild */
   hitFrac: number[];
   lastSwing: number;
+  /** feste Reihenfolge der Schläge (leer = abwechselnd nach Zufall) */
+  order: number[];
+  orderI: number;
+  /** Fähigkeiten-Animation, die gerade läuft (Index Q..R, Zeit, Gewicht) */
+  casts: (THREE.AnimationAction | null)[];
+  castRates: number[];
+  cast: { i: number; t: number; w: number } | null;
   /** Sterbeanimation (falls vorhanden) und Zeit seit dem Tod */
   death: THREE.AnimationAction | null;
   deathT: number;
@@ -426,21 +476,25 @@ export async function loadChampionModels() {
         const found = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
         if (!found) throw new Error("keine Animation im Modell");
         const anims = CHAMP_ANIMS[id] ?? {};
-        const [run, idle, attack, attack2, death, fist] = await Promise.all([
+        const casts = await Promise.all([0, 1, 2, 3].map((i) => loadExtraClip(anims.casts?.[i] ?? undefined, id, "QWER"[i])));
+        const [run, idle, attack, attack2, attack3, death, fist] = await Promise.all([
           loadExtraClip(anims.run, id, "Lauf"),
           loadExtraClip(anims.idle, id, "Steh"),
           loadExtraClip(anims.attack, id, "Schlag"),
           loadExtraClip(anims.attack2, id, "Zweite Schlag"),
+          loadExtraClip(anims.attack3, id, "Dritte Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
           loadExtraClip(anims.fist, id, "Faust"),
         ]);
         // Hüfthöhe fremder Animationen an dieses Modell anpassen (sonst sackt die Figur beim Wechsel zum Schlag ab)
         const ownHips = hipsY(clipFromZero(found));
-        const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [death, anims.death]] as const;
+        const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [attack3, anims.attack3], [death, anims.death]] as const;
         for (const [c, src] of extras) if (c && src?.fremd && ownHips) scaleHips(c, ownHips);
         const clip = run ?? clipFromZero(found);
-        if (fist) for (const c of [clip, idle, attack, attack2]) if (c) holdFingers(c, fist);
-        const hitFrac = [attack && anims.attack?.hit, attack2 && anims.attack2?.hit].flatMap((h, i) => (h ? [h / [attack, attack2][i]!.duration] : []));
+        if (fist) for (const c of [clip, idle, attack, attack2, attack3]) if (c) holdFingers(c, fist);
+        const atks = [attack, attack2, attack3].filter((c): c is THREE.AnimationClip => !!c);
+        const hits = [anims.attack?.hit, anims.attack2?.hit, anims.attack3?.hit].filter((_h, i) => [attack, attack2, attack3][i]);
+        const hitFrac = hits.every((h) => h) && atks.length > 1 ? hits.map((h, i) => h! / atks[i].duration) : [];
         gltf.scene.updateMatrixWorld(true);
         // Höhe und Fußpunkt in der ersten Laufhaltung messen (mit Skelett verformt); die Grundform des Netzes kann bei
         // Mixamo-Modellen anders liegen als die Haltung im Spiel
@@ -459,7 +513,7 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, death, hitFrac: hitFrac.length === 2 ? hitFrac : [], height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, attack3, order: anims.order ?? [], casts, castRates: [0, 1, 2, 3].map((i) => anims.casts?.[i]?.rate ?? 1), death, hitFrac, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
@@ -545,15 +599,25 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
     rig.atkW += ((swing >= 0 ? 1 : 0) - rig.atkW) * Math.min(1, dt * 14);
     if (rig.atkW < 0.001) rig.atkW = 0;
   }
+  if (rig.cast) {
+    // Fähigkeiten-Animation: läuft einmal durch, liegt über allem anderen; ein Schlag oder Weglaufen beendet sie
+    const c = rig.cast;
+    const d = rig.casts[c.i]!.getClip().duration;
+    c.t += dt * rig.castRates[c.i];
+    const done = c.t >= d || swing >= 0 || (moving && c.t > 0.25);
+    c.w += ((done ? 0 : 1) - c.w) * Math.min(1, dt * 12);
+    if (done && c.w < 0.02) rig.cast = null;
+  }
   if (rig.prev) {
     // voriger Schlag (andere Animation) blendet in ~0,15 s aus, der neue übernimmt
     rig.prev.w = Math.max(0, rig.prev.w - dt * 7);
     if (rig.prev.w <= 0) rig.prev = null;
   }
   const prevW = rig.prev ? Math.min(rig.prev.w, 1 - rig.atkW) : 0;
-  const base = Math.max(0, 1 - rig.atkW - prevW);
+  const castW = rig.cast?.w ?? 0;
+  const base = Math.max(0, 1 - rig.atkW - prevW - castW);
   const run = rig.idle ? rig.runW : 1;
-  setRigWeights(rig, base * run, base * (1 - run), rig.atkW, 0);
+  setRigWeights(rig, base * run, base * (1 - run), rig.atkW * (1 - castW), 0);
   rig.mixer.update(0);
 }
 
@@ -573,12 +637,31 @@ function setRigWeights(rig: ChampRig, run: number, idle: number, attack: number,
       a.setEffectiveWeight(Math.min(rig.prev.w, 1 - attack));
     } else a.setEffectiveWeight(0);
   }
+  rig.casts.forEach((a, i) => {
+    if (!a) return;
+    const on = rig.cast && rig.cast.i === i && death < 1;
+    a.setEffectiveWeight(on ? rig.cast!.w : 0);
+    if (on) a.time = Math.min(rig.cast!.t, a.getClip().duration);
+  });
   rig.death?.setEffectiveWeight(death);
+}
+
+/** Fähigkeiten-Animation starten (slot 0-3 = Q, W, E, R), falls das Modell eine hat. */
+export function playCast(rig: ChampRig, slot: number) {
+  if (rig.casts[slot]) rig.cast = { i: slot, t: 0, w: rig.cast?.w ?? 0 };
 }
 
 /** Nächste Schlaganimation wählen: meist die andere, gelegentlich dieselbe noch einmal, nie dreimal hintereinander. */
 function nextAttack(rig: ChampRig) {
   const cur = rig.attacks.indexOf(rig.attack!);
+  if (rig.order.length) {
+    // feste Reihenfolge, z. B. Schlag 1, Schlag 2, Schlag 1 gespiegelt, Schlag 2
+    const next = rig.order[rig.orderI++ % rig.order.length];
+    if (rig.attack && rig.atkW > 0.05 && next !== cur) rig.prev = { action: rig.attack, time: rig.atkTime, w: rig.atkW };
+    rig.attack = rig.attacks[next] ?? rig.attack;
+    rig.atkTime = 0;
+    return;
+  }
   const again = cur >= 0 && rig.atkRepeat < 1 && Math.random() < 0.25;
   const next = rig.attacks.length > 1 && !again ? (cur + 1) % rig.attacks.length : Math.max(0, cur);
   rig.atkRepeat = next === cur ? rig.atkRepeat + 1 : 0;
@@ -684,11 +767,13 @@ function buildRig(asset: RigAsset, height: number) {
   const action = play(asset.clip, 1)!;
   const idle = play(asset.idle, 0);
   const attack = play(asset.attack, 0);
-  const attacks = [attack, play(asset.attack2, 0)].filter((a): a is THREE.AnimationAction => !!a);
+  const attacks = [attack, play(asset.attack2, 0), play(asset.attack3, 0)].filter((a): a is THREE.AnimationAction => !!a);
+  const casts = asset.casts.map((c) => play(c, 0));
   const death = play(asset.death, 0);
   const rig: ChampRig = {
     mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model,
     idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, hitFrac: asset.hitFrac, lastSwing: -1, death, deathT: 0,
+    order: asset.order, orderI: 0, casts, castRates: asset.castRates, cast: null,
   };
   updateRig(rig, false, 0, 0);
   return { model, rig };

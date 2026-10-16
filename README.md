@@ -167,6 +167,15 @@ Pfeil verlässt den Bogen kurz vor Schluss (`swing` in `champions.ts`, gilt jetz
 Flug ist ein kleines 3D-Modell (Schaft, Spitze, Federn), fliegt in einem flachen Bogen zur Brusthöhe des Ziels und zieht
 eine leichte Spur.
 
+## Varok (Top, Kriegerin mit Großschwert)
+
+Varok ist die Mixamo-Kriegerin „Maria“ (`Krieger ….fbx`), das Schwert ist ein eigenes Teil. Schläge in fester
+Reihenfolge Schlag 1, Schlag 2, Schlag 1 gespiegelt, Schlag 2 (`order` in `CHAMP_ANIMS`), beide auf den Hieb gekürzt.
+Fähigkeiten mit eigener Animation (`casts`, startet beim Zaubern, ein Schlag oder Weglaufen beendet sie):
+Q Klingenwirbel (wirbelt 7,5 nach vorn), W Kampfschrei, E Ansturm (Rutsch-Angriff 8 weit), R Richtspruch (Sprung, die
+Landung fällt auf den Hieb der Animation). Q, E und R bewegen sich in den Original-Animationen selbst vorwärts; diese
+Bewegung ist herausgerechnet (`champion_anim.py --auf-der-stelle`), Strecke und Tempo macht das Spiel.
+
 ## Elara (Support, Heilerin)
 
 Elara ist die Mixamo-Figur „Nightshade“ (`Supporter ….fbx`). Grundangriff: Magiegeschoss (`projColor`), Zauber auf

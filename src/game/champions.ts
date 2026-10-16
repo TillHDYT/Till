@@ -89,22 +89,30 @@ export const CHAMPIONS: ChampDef[] = [
     levelOrder: [3, 0, 2, 1],
     build: ["boots", "cleaver", "sunfire", "bloodthirster", "spiritcloak", "thornmail"],
     look: { body: 0x8a3b24, accent: 0xd8a24a, skin: 0xe2b48c, hair: 0x3a2618, weapon: "sword", bulk: 1.15, cape: 0x6a1f18 },
+    // Schlag 1 (Varok_Attack1.glb, 1,0 s, Hieb bei 0,48 s), 1,2-mal so schnell; Schlag 2 und der gespiegelte Schlag 1
+    // werden auf denselben Treffer gedehnt
+    swing: { clip: 1.0 / 1.2, hit: 0.48 / 1.2 },
     abilities: [
       {
-        name: "Wirbelklinge",
-        desc: "Dreht sich mit der Klinge und trifft alle Gegner im Umkreis.",
+        name: "Klingenwirbel",
+        desc: "Wirbelt mit der Klinge nach vorn und trifft alle Gegner auf dem Weg.",
         icon: "🌀",
-        targeting: "self",
-        range: 4.3,
-        radius: 4.3,
+        targeting: "dir",
+        range: 7.5,
+        width: 4.4,
         cd: [7, 6.5, 6, 5.5],
         mana: [30, 30, 30, 30],
         ai: "fight",
-        cast: (w, c, _aim, rank) => {
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
           const dmg = r4([70, 110, 150, 190], rank) + c.stats.ad * 0.8;
-          w.fx({ type: "spin", x: c.x, z: c.z, r: 4.3, color: 0xffb070, owner: c });
           c.anim.cast = 0.4;
-          for (const u of w.enemiesInRadius(c.team, c.x, c.z, 4.3)) w.damage(c, u, dmg, "phys", { ability: true });
+          // so weit und so schnell wie in der Animation (3,2 m bei 1,75 m Körpergröße, rund 0,8 s)
+          w.dash(c, c.x + d.dx * 7.5, c.z + d.dz * 7.5, 9.5, {
+            hitRadius: 2.2,
+            onHit: (u) => w.damage(c, u, dmg, "phys", { ability: true }),
+            onArrive: () => w.fx({ type: "spin", x: c.x, z: c.z, r: 3, color: 0xffb070, owner: c }),
+          });
         },
       },
       {
@@ -127,7 +135,7 @@ export const CHAMPIONS: ChampDef[] = [
         desc: "Stürmt nach vorn, verletzt und verlangsamt Gegner auf dem Weg.",
         icon: "💨",
         targeting: "dir",
-        range: 7,
+        range: 8,
         width: 2,
         cd: [11, 10, 9, 8],
         mana: [35, 35, 35, 35],
@@ -135,7 +143,8 @@ export const CHAMPIONS: ChampDef[] = [
         cast: (w, c, aim, rank) => {
           const d = dirFrom(c, aim);
           const dmg = r4([50, 80, 110, 140], rank) + c.stats.ad * 0.6;
-          w.dash(c, c.x + d.dx * 7, c.z + d.dz * 7, 26, {
+          // Rutsch-Angriff: Strecke wie in der Animation (3,5 m bei 1,75 m Körpergröße), langsamer passend zur Animation
+          w.dash(c, c.x + d.dx * 8, c.z + d.dz * 8, 14, {
             hitRadius: 1.8,
             onHit: (u) => {
               w.damage(c, u, dmg, "phys", { ability: true });
@@ -157,7 +166,8 @@ export const CHAMPIONS: ChampDef[] = [
         cast: (w, c, aim, rank) => {
           const p = clampAim(c, aim, 9);
           const dmg = r4([150, 275, 400], rank) + c.stats.ad * 1.0;
-          w.dash(c, p.x, p.z, 20, {
+          // Sprung so schnell, dass die Landung auf den Schwerthieb der Animation fällt (1,2 s bei Tempo 1,3)
+          w.dash(c, p.x, p.z, Math.max(6, Math.hypot(p.x - c.x, p.z - c.z) / (1.2 / 1.3)), {
             leap: true,
             onArrive: () => {
               w.fx({ type: "slam", x: c.x, z: c.z, r: 4.5, color: 0xffa040, owner: c });

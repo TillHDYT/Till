@@ -1,5 +1,5 @@
 # Holt eine einzelne Mixamo-Animation (FBX) als kleines GLB nur mit Skelett und Animation heraus:
-#   python champion_anim.py <animation.fbx> <ausgabe.glb> <Name> [--treffer] [--von s --bis s]
+#   python champion_anim.py <animation.fbx> <ausgabe.glb> <Name> [--treffer] [--von s --bis s] [--auf-der-stelle]
 # Das Skelett muss dasselbe sein wie beim Champion-Modell (gleiche Knochennamen), dann spielt das
 # Spiel die Animation direkt auf dem Modell ab (siehe loadChampionModels in models.ts).
 # Mit --treffer wird zusätzlich gemessen, wann die Faust am weitesten vorne ist (Treffermoment eines Schlags);
@@ -11,9 +11,11 @@ import bpy  # noqa: I001
 
 args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
 HIT = "--treffer" in args
+# --auf-der-stelle: Hüfte bleibt waagerecht am Platz (Vorwärts- und Seitbewegung raus); die Bewegung macht das Spiel
+INPLACE = "--auf-der-stelle" in args
 # --von/--bis: nur diesen Ausschnitt (Sekunden ab Clipbeginn) exportieren, z. B. Ausholen und Nachlauf kürzen
 CUT = [float(args[args.index(k) + 1]) if k in args else None for k in ("--von", "--bis")]
-plain = [a for i, a in enumerate(args) if a != "--treffer" and a not in ("--von", "--bis") and (i == 0 or args[i - 1] not in ("--von", "--bis"))]
+plain = [a for i, a in enumerate(args) if a not in ("--treffer", "--auf-der-stelle") and a not in ("--von", "--bis") and (i == 0 or args[i - 1] not in ("--von", "--bis"))]
 SRC, OUT, NAME = plain[-3:]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -57,6 +59,26 @@ if HIT:
     t = (frame - f0) / fps
     dur = (f1 - f0) / fps
     print(f"TREFFER: {hand} Faust am weitesten vorne im Schwung bei Bild {frame:.2f} = {t:.3f} s von {dur:.3f} s ({t / dur:.3f}), {reach * 100:.0f} cm vor der Hüfte")
+
+def fcurves_of(action):
+    """F-Kurven einer Aktion (Blender 4.4+ mit Ebenen/Slots oder ältere Form)."""
+    if hasattr(action, "layers") and action.layers:
+        return [fc for layer in action.layers for strip in layer.strips for bag in strip.channelbags for fc in bag.fcurves]
+    return list(action.fcurves)
+
+
+if INPLACE:
+    # Hüft-Position: lokale Achsen 0 (seitlich) und 2 (vorwärts) auf den Anfangswert, die Höhe (1) bleibt
+    for fc in fcurves_of(act):
+        if fc.data_path == 'pose.bones["mixamorig:Hips"].location' and fc.array_index in (0, 2) and len(fc.keyframe_points):
+            v0 = fc.keyframe_points[0].co.y
+            for k in fc.keyframe_points:
+                d = k.co.y - v0
+                k.co.y -= d
+                k.handle_left.y -= d
+                k.handle_right.y -= d
+            fc.update()
+    print("auf der Stelle: Hüfte waagerecht festgehalten")
 
 # nur Skelett und Animation exportieren, Mesh und Texturen bringt schon das Champion-Modell mit
 for o in list(bpy.context.scene.objects):
