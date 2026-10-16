@@ -11,10 +11,11 @@ import pineUrl from "../assets/pine.png";
 import rockUrl from "../assets/rock.jpg";
 import stoneUrl from "../assets/stone.jpg";
 import tallgrassUrl from "../assets/tallgrass.png";
+import waterAtlasUrl from "../assets/water_atlas.jpg";
 
 export type Quality = "high" | "low";
-/** Höhe der Wasseroberfläche im Fluss. */
-export const WATER_Y = -0.32;
+/** Höhe der Wasseroberfläche im Fluss: knapp über dem Flussbett (Höhe 0), sonst verdeckt der Boden das Wasser. */
+export const WATER_Y = 0.05;
 
 /** Bäume nahe der Kamera und zwischen Kamera und Champion in der Nahansicht ausblenden (siehe camcut.ts). */
 const cutPatch = (shader: THREE.WebGLProgramParametersWithUniforms) => addCutUniforms(shader, "vFogW");
@@ -653,11 +654,17 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   maskTex.magFilter = THREE.LinearFilter;
   maskTex.minFilter = THREE.LinearFilter;
   maskTex.needsUpdate = true;
+  // Wasser-Animation (assets-src/wasser.gif): 16 Einzelbilder in einer 4x4-Tafel, siehe assets-src/water_atlas.py
+  const waterTex = new THREE.TextureLoader().load(waterAtlasUrl);
+  waterTex.colorSpace = THREE.SRGBColorSpace;
+  waterTex.generateMipmaps = false;
+  waterTex.minFilter = THREE.LinearFilter;
   const water = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     uniforms: {
       uTime: timeU,
+      uWaterTex: { value: waterTex },
       uMask: { value: maskTex },
       uFogTex: fog.uniforms.uFogTex,
       uFogOn: fog.uniforms.uFogOn,
@@ -671,7 +678,16 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       }`,
     fragmentShader: `
       uniform float uTime;
+      uniform sampler2D uWaterTex;
       uniform sampler2D uMask;
+      // Einzelbild f der Wasser-Animation, gespiegelt gekachelt (keine Nähte zwischen den Kacheln)
+      vec3 waterFrame(vec2 uv, float f) {
+        vec2 m = abs(mod(uv, 2.0) - 1.0);
+        m = mix(vec2(0.004), vec2(0.996), m);
+        float i = mod(f, 16.0);
+        vec2 cell = vec2(mod(i, 4.0), floor(i / 4.0));
+        return texture2D(uWaterTex, vec2((cell.x + m.x) / 4.0, 1.0 - (cell.y + m.y) / 4.0)).rgb;
+      }
       uniform sampler2D uFogTex;
       uniform float uFogOn;
       varying vec3 vW;
@@ -686,10 +702,22 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
         vec3 deep = vec3(0.08, 0.27, 0.32);
         vec3 shallow = vec3(0.24, 0.47, 0.44);
         vec3 col = mix(shallow, deep, smoothstep(0.3, 1.0, m));
-        col += smoothstep(0.72, 0.95, r) * 0.12;
+        // bewegtes Wasser aus der Animation: eine Kachel ~ 11 x 6 Einheiten, 16 Bilder in 2,24 s, weich überblendet
+        float fr = uTime * (16.0 / 2.24);
+        float f0 = floor(fr);
+        float fk = fract(fr);
+        // zwei gegeneinander gedrehte Kachelungen überlagert: keine sichtbaren Spiegelmuster
+        vec2 wuv = p / vec2(11.0, 6.2) + vec2(uTime * 0.012, uTime * 0.006);
+        vec2 wuv2 = mat2(0.8, -0.6, 0.6, 0.8) * p / vec2(8.3, 4.7) + vec2(0.37, 0.61) - vec2(uTime * 0.009, uTime * 0.011);
+        vec3 anim = 0.5 * (mix(waterFrame(wuv, f0), waterFrame(wuv, f0 + 1.0), fk) + mix(waterFrame(wuv2, f0 + 7.0), waterFrame(wuv2, f0 + 8.0), fk));
+        // Farben direkt aus der Animation (Mittelwert der Tafel ~ (0,002; 0,071; 0,085)), Kontrast der Lichtlinien etwas betont
+        vec3 mean = vec3(0.002, 0.071, 0.085);
+        vec3 gifCol = max(mean + (anim - mean) * 1.6, 0.0) * 1.25;
+        col = mix(col, gifCol, 0.85);
+        col += smoothstep(0.72, 0.95, r) * 0.08;
         float foam = smoothstep(0.1, 0.0, abs(m - 0.16)) * (0.6 + 0.4 * sin(uTime * 1.6 + p.x * 0.8 + p.y * 0.6));
         col = mix(col, vec3(0.78, 0.9, 0.86), foam * 0.35);
-        float a = smoothstep(0.04, 0.4, m) * 0.78;
+        float a = smoothstep(0.04, 0.4, m) * 0.9;
         float fv = texture2D(uFogTex, vW.xz / ${MAP.toFixed(1)}).r;
         vec3 fogged = col * vec3(0.38, 0.42, 0.55);
         col = mix(col, mix(fogged, col, fv), uFogOn);
