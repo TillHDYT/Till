@@ -1722,6 +1722,19 @@ export class World {
       } else if (m.hp < m.stats.maxHp && t - m.lastDamagedAt > 4) {
         m.hp = Math.min(m.stats.maxHp, m.hp + m.stats.maxHp * 0.1 * dt);
       }
+      // ruhende Monster schauen den nächsten Champion in der Nähe an (wie in LoL)
+      if (!m.resetting) {
+        let near: Champion | null = null;
+        let best = 14;
+        for (const c of this.champs) {
+          const d = dist(c, m);
+          if (c.alive && d < best) {
+            best = d;
+            near = c;
+          }
+        }
+        if (near) m.facing = Math.atan2(near.x - m.x, near.z - m.z);
+      }
       m.anim.moving = false;
       return;
     }

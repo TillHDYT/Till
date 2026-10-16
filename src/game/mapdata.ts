@@ -148,6 +148,43 @@ export function inBaseArea(team: Team, p: V2) {
   return true;
 }
 
+/**
+ * Mauer der Basis zur Dschungelseite (oben, abgeschrägte Ecke, rechts aus blauer Sicht), wie in LoL mit zwei Toren;
+ * die Lanes laufen frei hindurch. Dahinter führt ein geschwungener Weg um die Basis von Top über Mid nach Bot.
+ */
+const BASE_WALL = 4;
+const BASE_GATES: V2[][] = [
+  [{ x: 28, z: 148 }, { x: 28, z: 136 }],
+  [{ x: 52, z: 172 }, { x: 64, z: 172 }],
+];
+const BASE_WALK: V2[] = [
+  { x: 14, z: 139 },
+  { x: 37, z: 138.5 },
+  { x: 47, z: 145 },
+  { x: 55, z: 153 },
+  { x: 61.5, z: 163 },
+  { x: 62, z: 186 },
+];
+export const BASE_WALK_WIDTH = 7;
+const toBlue = (team: Team, p: V2) => {
+  const m = team === 0 ? p : mirror(p);
+  return { x: m.x / MAP_SCALE, z: m.z / MAP_SCALE };
+};
+/** Liegt der Punkt in der Basismauer (Tore ausgenommen)? */
+export function inBaseWall(team: Team, p: V2) {
+  if (!inBaseArea(team, p)) return false;
+  const q = toBlue(team, p);
+  const edge = Math.min(q.z - 143, (q.z - q.x - 104) / Math.SQRT2, 57 - q.x) * MAP_SCALE;
+  if (edge > BASE_WALL) return false;
+  return !BASE_GATES.some((g) => distToPolyline(q, g) * MAP_SCALE < 3.2);
+}
+/** Liegt der Punkt auf dem Weg um die Basis oder in einem ihrer Tore? */
+export function onBaseWalk(team: Team, p: V2) {
+  const q = toBlue(team, p);
+  if (distToPolyline(q, BASE_WALK) * MAP_SCALE < BASE_WALK_WIDTH / 2) return true;
+  return BASE_GATES.some((g) => distToPolyline(q, g) * MAP_SCALE < 3.2);
+}
+
 export function distToSegment(p: V2, a: V2, b: V2): number {
   const dx = b.x - a.x;
   const dz = b.z - a.z;

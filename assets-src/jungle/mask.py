@@ -131,6 +131,17 @@ wl, ws = components(water)
 big = int(np.argmax(ws))
 water = wl == big
 water = np.where(blue, water, water[::-1, ::-1]) & ~full
+# ganzes Flussbett füllen: vom Becken aus über freie Zellen, aber nur in einem Band um die Diagonale
+# (sonst liefe das Wasser in die Dschungelwege); Grube und Flussarme gehören dazu
+BAND = float(sys.argv[5]) if len(sys.argv) > 5 else 15.0
+along = (xx + zz) / np.sqrt(2)
+wob = np.sin(along * 0.09) * 2.5 + np.sin(along * 0.23 + 1.0) * 1.5
+band = np.abs(zz - xx) / np.sqrt(2) < BAND + wob
+# Drachen- und Baron-Grube stehen unter Wasser (wie die Drachengrube in LoL)
+(dX, dY), dR = CAMPS["dragon"]
+for cx, cz in (lol(dX, dY), (MAP - lol(dX, dY)[0], MAP - lol(dX, dY)[1])):
+    band |= np.hypot(xx - cx, zz - cz) < dR + 1
+water = flood_any(~full & band, list(zip(*np.nonzero(water)))) | water
 
 
 def rle(mask):

@@ -8,9 +8,9 @@ import {
   LANES,
   LANE_WIDTH,
   MAP,
-  RIVER,
-  RIVER_WIDTH,
   inBaseArea,
+  inBaseWall,
+  onBaseWalk,
   distToPolyline,
   type LaneId,
   type V2,
@@ -268,11 +268,8 @@ export class NavGrid {
         }
         this.lane[i] = laneT;
 
-        // Fluss: schmaler Lauf über die ganze Diagonale, dazu die Becken um Baron und Drache
-        const rw = RIVER_WIDTH / 2 + (fbm(p.x * 0.07, p.z * 0.07) - 0.5) * 3;
-        const rd = distToPolyline(p, RIVER);
-        const riverT = Math.max(1 - smooth(rw - 3, rw, rd), maskAt(RIVER_POOL, p.x, p.z));
-        this.river[i] = riverT;
+        // Fluss: ganzes Flussbett samt Becken und Gruben aus der Karte (Ufer wird unten geglättet)
+        this.river[i] = maskAt(RIVER_POOL, p.x, p.z);
 
         let inBase = -1;
         for (const t of [0, 1] as const) if (inBaseArea(t, p)) inBase = t;
@@ -281,8 +278,12 @@ export class NavGrid {
         // Außerhalb der Lanes Wald, innen frei bis auf die Wandinseln des Jungles
         let open = pointInPoly(p, ring) && !maskAt(JUNGLE_WALL, p.x, p.z);
         // Freischneiden
-        if (laneT > 0.25) open = true;
         if (inBase >= 0) open = true;
+        for (const t of [0, 1] as const) {
+          if (onBaseWalk(t, p)) open = true;
+          if (inBaseWall(t, p)) open = false;
+        }
+        if (laneT > 0.25) open = true;
         for (const f of FOUNTAIN) {
           if (Math.hypot(p.x - f.x, p.z - f.z) < FOUNTAIN_RADIUS + 1) open = true;
         }
@@ -309,8 +310,12 @@ export class NavGrid {
       for (let i = 0; i < n * n; i++) if (!this.walk[i] && toWall[i] > THIN_WALL) this.walk[i] = 1;
     }
 
-    // kein Wasser unter den Wandinseln
-    for (let i = 0; i < n * n; i++) if (!this.walk[i]) this.river[i] = 0;
+    // weiches Ufer; kein Wasser unter den Wandinseln und auf den Lanes (Mid quert trocken)
+    this.river.set(blur(blur(blur(this.river, n), n), n));
+    for (let i = 0; i < n * n; i++) {
+      if (!this.walk[i]) this.river[i] = 0;
+      this.river[i] *= 1 - smooth(0.15, 0.6, this.lane[i]);
+    }
 
     // Büsche: begehbar, merken pro Zelle.
     BRUSHES.forEach((b, bi) => {

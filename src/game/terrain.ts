@@ -891,6 +891,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       const sd = grid.sdAt(x, z);
       if (sd > -1.1) continue;
       if (FOUNTAIN.some((f) => Math.hypot(f.x - x, f.z - z) < 13)) continue;
+      // Basismauer: nur Stein, keine Bäume
+      if (grid.base[Math.min(grid.n - 1, Math.floor(z)) * grid.n + Math.min(grid.n - 1, Math.floor(x))] >= 0) continue;
       const depth = -sd;
       if (depth > 7 && rand() < 0.45) continue;
       const kind = rand() < 0.5 ? 0 : 1;
