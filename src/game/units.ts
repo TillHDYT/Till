@@ -346,8 +346,8 @@ export class Structure extends Unit {
       r = 3.0;
     } else {
       Object.assign(base, { maxHp: 4600, armor: 20, mr: 20, hpReg: 4 });
-      // Sockel des Modells hat Radius 9.4 (füllt die silberne Fläche im Basisboden)
-      r = 7;
+      // Sockel des Modells hat Radius 10.5 (bedeckt die silberne Sternfläche im Basisboden)
+      r = 7.8;
     }
     super(kind, team, pos.x, pos.z, r, base);
     this.lane = lane;

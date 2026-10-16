@@ -1762,7 +1762,7 @@ export function addStartBaseFires(fountain: THREE.Object3D) {
 type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry; materials: [THREE.Material, THREE.Material] };
 const NEXUS_STENCIL = 2;
 /** so weit steckt das Nexus-Modell im Boden (siehe buildNexusModel) */
-const NEXUS_SINK = 2.45;
+const NEXUS_SINK = 2.85;
 let nexusAsset: NexusAsset | null = null;
 
 /** Lädt das Nexus-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Nexus. */
@@ -1795,13 +1795,13 @@ export async function loadNexus(): Promise<boolean> {
 /** Nexus aus dem Modell: Sockel mit Krallen, Kristall in Teamfarbe dreht sich und leuchtet. */
 function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   const root = new THREE.Group();
-  // Der Zierring außen (Radius 7-9.4) beginnt im Modell erst 2.6 über dem Boden: abgesenkt, damit er aufliegt und
+  // Der Zierring außen (Radius 7.8-10.5) beginnt im Modell erst 2.9 über dem Boden: abgesenkt, damit er aufliegt und
   // die silberne Sockelfläche im Boden bedeckt, dazu ein Kontaktschatten
   const body = new THREE.Group();
   body.position.y = -NEXUS_SINK;
   root.add(body);
   const contact = new THREE.Mesh(
-    new THREE.CircleGeometry(10.5, 48),
+    new THREE.CircleGeometry(11.7, 48),
     new THREE.MeshBasicMaterial({ color: 0x000000, map: glowTexture(), transparent: true, opacity: 0.65, depthWrite: false }),
   );
   contact.rotation.x = -Math.PI / 2;

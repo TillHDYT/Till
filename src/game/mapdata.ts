@@ -39,7 +39,7 @@ export type StructureSpec =
 
 // Gebäude an den LoL-Positionen; die in der Basis genau auf ihren Sockeln im Basisboden (assets-src/base-floor)
 const BLUE_STRUCTS: StructureSpec[] = [
-  { kind: "nexus", team: 0, pos: lol(1504, 1716) },
+  { kind: "nexus", team: 0, pos: lol(1543, 1661) },
   { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(1724, 2242) },
   { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(2125, 1760) },
   { kind: "inhib", team: 0, lane: "top", pos: lol(1230, 3593) },
