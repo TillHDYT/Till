@@ -1761,6 +1761,8 @@ export function addStartBaseFires(fountain: THREE.Object3D) {
 
 type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry; materials: [THREE.Material, THREE.Material] };
 const NEXUS_STENCIL = 2;
+/** so weit steckt das Nexus-Modell im Boden (siehe buildNexusModel) */
+const NEXUS_SINK = 2.45;
 let nexusAsset: NexusAsset | null = null;
 
 /** Lädt das Nexus-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Nexus. */
@@ -1793,12 +1795,25 @@ export async function loadNexus(): Promise<boolean> {
 /** Nexus aus dem Modell: Sockel mit Krallen, Kristall in Teamfarbe dreht sich und leuchtet. */
 function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   const root = new THREE.Group();
+  // Der Zierring außen (Radius 7-9.4) beginnt im Modell erst 2.6 über dem Boden: abgesenkt, damit er aufliegt und
+  // die silberne Sockelfläche im Boden bedeckt, dazu ein Kontaktschatten
+  const body = new THREE.Group();
+  body.position.y = -NEXUS_SINK;
+  root.add(body);
+  const contact = new THREE.Mesh(
+    new THREE.CircleGeometry(10.5, 48),
+    new THREE.MeshBasicMaterial({ color: 0x000000, map: glowTexture(), transparent: true, opacity: 0.65, depthWrite: false }),
+  );
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.y = 0.04;
+  contact.renderOrder = 1;
+  root.add(contact);
   const base = new THREE.Mesh(asset.base.geometry, asset.materials[team]);
   base.castShadow = true;
   base.receiveShadow = true;
-  root.add(base);
+  body.add(base);
   const top = new THREE.Group();
-  root.add(top);
+  body.add(top);
   const crystal = new THREE.Group();
   crystal.position.copy(asset.crystal.position);
   const gemM = gemMat(team);
@@ -1829,9 +1844,9 @@ function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   );
   rubble.castShadow = true;
   rubble.visible = false;
-  root.add(rubble);
+  body.add(rubble);
   const outline = silhouetteOutline(asset.outlineGeo, 0xff2a1a, 0.09, NEXUS_STENCIL);
-  root.add(outline);
+  body.add(outline);
   return { root, crystal, glow, top, rubble, crystalY: crystal.position.y, outline };
 }
 
