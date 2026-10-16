@@ -31,6 +31,8 @@ export type DashOpts = {
   onArrive?: () => void;
   untargetable?: boolean;
   leap?: boolean;
+  /** geht durch Wände (landet hinter der Wand, wenn die Reichweite genügt) */
+  passWalls?: boolean;
   forced?: boolean;
 };
 

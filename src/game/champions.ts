@@ -109,6 +109,7 @@ export const CHAMPIONS: ChampDef[] = [
           c.anim.cast = 0.4;
           // so weit und so schnell wie in der Animation (3,2 m bei 1,75 m Körpergröße, rund 0,8 s)
           w.dash(c, c.x + d.dx * 7.5, c.z + d.dz * 7.5, 9.5, {
+            passWalls: true,
             hitRadius: 2.2,
             onHit: (u) => w.damage(c, u, dmg, "phys", { ability: true }),
             onArrive: () => w.fx({ type: "spin", x: c.x, z: c.z, r: 3, color: 0xffb070, owner: c }),

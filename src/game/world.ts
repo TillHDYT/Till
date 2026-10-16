@@ -470,18 +470,30 @@ export class World {
       }
       return last;
     }
-    for (let s = steps; s >= 0; s--) {
-      const px = fromX + (dx * s) / steps;
-      const pz = fromZ + (dz * s) / steps;
-      if (g.isOpen(px, pz)) return { x: px, z: pz };
+    // durch Wände: Ziel frei -> dort landen; liegt es in der Wand, wie in LoL an der nächsten freien Stelle
+    // auf der Linie, vor oder hinter der Wand (hinter der Wand höchstens 3 Einheiten weiter)
+    if (g.isOpen(x, z) || len < 0.01) return g.isOpen(x, z) ? { x, z } : { x: fromX, z: fromZ };
+    const ux = dx / len;
+    const uz = dz / len;
+    let back: V2 = { x: fromX, z: fromZ };
+    let backD = len;
+    for (let d = len; d >= 0; d -= 0.25) {
+      if (g.isOpen(fromX + ux * d, fromZ + uz * d)) {
+        back = { x: fromX + ux * d, z: fromZ + uz * d };
+        backD = len - d;
+        break;
+      }
     }
-    return { x: fromX, z: fromZ };
+    for (let d = 0.25; d <= Math.min(3, backD); d += 0.25) {
+      if (g.isOpen(x + ux * d, z + uz * d)) return { x: x + ux * d, z: z + uz * d };
+    }
+    return back;
   }
 
   dash(u: Unit, x: number, z: number, speed: number, opts: DashOpts) {
     if (u.kind === "turret" || u.kind === "inhib" || u.kind === "nexus") return;
     if (u.kind === "monster" && (u as Monster).big && ((u as Monster).mkind === "baron" || (u as Monster).mkind === "dragon")) return;
-    const end = this.landing(u.x, u.z, x, z, !!opts.leap);
+    const end = this.landing(u.x, u.z, x, z, !!opts.leap || !!opts.passWalls);
     const total = Math.hypot(end.x - u.x, end.z - u.z);
     u.dash = { ...opts, tx: end.x, tz: end.z, sx: u.x, sz: u.z, speed, hit: new Set(), total };
     if (end.x !== u.x || end.z !== u.z) u.facing = Math.atan2(end.x - u.x, end.z - u.z);

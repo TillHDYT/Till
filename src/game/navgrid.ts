@@ -10,6 +10,7 @@ import {
   MAP,
   inBaseArea,
   inBaseWall,
+  STRUCTURES,
   onBaseWalk,
   distToPolyline,
   type LaneId,
@@ -286,6 +287,10 @@ export class NavGrid {
         if (laneT > 0.25) open = true;
         for (const f of FOUNTAIN) {
           if (Math.hypot(p.x - f.x, p.z - f.z) < FOUNTAIN_RADIUS + 1) open = true;
+        }
+        // Gebäude stehen wie in LoL am Lane-Rand: drumherum frei
+        for (const st of STRUCTURES) {
+          if (Math.hypot(p.x - st.pos.x, p.z - st.pos.z) < 5) open = true;
         }
         // Standplatz der Monster immer frei (die Nischen selbst kommen aus der Maske)
         for (const c of CAMPS) {

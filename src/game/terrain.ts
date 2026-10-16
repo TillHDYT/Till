@@ -7,6 +7,7 @@ import { campDist, campShape, fbm, noise2, rng, type NavGrid } from "./navgrid";
 import grassUrl from "../assets/grass.jpg";
 import leavesUrl from "../assets/leaves.png";
 import pathUrl from "../assets/path.jpg";
+import baseFloorUrl from "../assets/base_floor.jpg";
 import pineUrl from "../assets/pine.png";
 import rockUrl from "../assets/rock.jpg";
 import stoneUrl from "../assets/stone.jpg";
@@ -373,6 +374,19 @@ function laneCoords(grid: NavGrid, res: number) {
   return tex;
 }
 
+/** Kantenlänge des Basisbodens (Einheiten), er liegt in der Ecke x 0.., z ..MAP (siehe assets-src/base-floor). */
+const BASE_FLOOR_SIZE = (128 * MAP) / 300;
+
+function loadBaseFloor(): THREE.Texture {
+  const t = new THREE.TextureLoader().load(baseFloorUrl);
+  t.flipY = false;
+  t.wrapS = THREE.ClampToEdgeWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 /** Läd die gemalte Grastextur (kachelbar). */
 export function loadGrass(url: string = grassUrl): THREE.Texture {
   const t = new THREE.TextureLoader().load(url);
@@ -662,6 +676,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     uRock: { value: loadGrass(rockUrl) },
     uGMask: { value: groundMask(grid, high ? 512 : 320) },
     uLane: { value: laneCoords(grid, high ? 1024 : 640) },
+    uBaseFloor: { value: loadBaseFloor() },
     uGrassScale: { value: 1 / 7.5 },
     uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
   };
@@ -675,7 +690,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vWN;\nuniform sampler2D uGrass;\nuniform sampler2D uPath;\nuniform sampler2D uStone;\nuniform sampler2D uRock;\nuniform sampler2D uGMask;\nuniform sampler2D uLane;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;",
+          "#include <common>\nvarying vec3 vWN;\nuniform sampler2D uGrass;\nuniform sampler2D uPath;\nuniform sampler2D uStone;\nuniform sampler2D uRock;\nuniform sampler2D uGMask;\nuniform sampler2D uLane;\nuniform sampler2D uBaseFloor;\nuniform float uGrassScale;\nuniform vec3 uGrassTint;",
         )
         .replace(
           "#include <map_fragment>",
@@ -706,11 +721,14 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
             vec3 pathCol = textureGrad(uPath, pp, ddx, ddy).rgb * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
             diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
           }
-          // Basis: Steinplatten, leicht in Teamfarbe getönt
+          // Basis: Boden wie auf der Kluft (assets-src/base-floor), Rot gespiegelt; feine Steinstruktur darüber
           if (gMask.a > 0.004) {
-            vec3 st = texture2D(uStone, vFogW.xz / 6.5).rgb;
-            vec3 stoneTint = vFogW.x < vFogW.z ? vec3(1.2, 1.32, 1.55) : vec3(1.55, 1.3, 1.25);
-            diffuseColor.rgb = mix(diffuseColor.rgb, st * stoneTint, gMask.a);
+            bool redSide = vFogW.x > vFogW.z;
+            vec2 bp = redSide ? vec2(${MAP.toFixed(1)}) - vFogW.xz : vFogW.xz;
+            vec3 bc = texture2D(uBaseFloor, (bp - vec2(0.0, ${(MAP - BASE_FLOOR_SIZE).toFixed(1)})) / ${BASE_FLOOR_SIZE.toFixed(1)}).rgb;
+            float det = dot(texture2D(uStone, vFogW.xz / 6.5).rgb, vec3(0.333));
+            bc *= mix(1.0, det * 2.2, 0.22) * (redSide ? vec3(1.42, 1.28, 1.22) : vec3(1.3, 1.32, 1.38));
+            diffuseColor.rgb = mix(diffuseColor.rgb, bc, gMask.a);
           }
           diffuseColor.rgb = mix(diffuseColor.rgb, grassCol, gMask.r);
           // Felswände: an steilen Stellen Fels (dreiseitig projiziert), oben Moos

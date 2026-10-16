@@ -37,22 +37,23 @@ export type StructureSpec =
   | { kind: "inhib"; team: Team; lane: LaneId; pos: V2 }
   | { kind: "nexus"; team: Team; pos: V2 };
 
+// Gebäude an den LoL-Positionen (wie auf der Kluft, passend zum Boden der Basis)
 const BLUE_STRUCTS: StructureSpec[] = [
-  { kind: "nexus", team: 0, pos: v(24, 176) },
-  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: v(27, 166) },
-  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: v(34, 173) },
-  { kind: "inhib", team: 0, lane: "top", pos: v(14, 149) },
-  { kind: "inhib", team: 0, lane: "mid", pos: v(43, 157) },
-  { kind: "inhib", team: 0, lane: "bot", pos: v(51, 186) },
-  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: v(14, 137) },
-  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: v(51, 149) },
-  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: v(63, 186) },
-  { kind: "turret", team: 0, lane: "top", tier: "inner", pos: v(14, 100) },
-  { kind: "turret", team: 0, lane: "mid", tier: "inner", pos: v(66, 134) },
-  { kind: "turret", team: 0, lane: "bot", tier: "inner", pos: v(100, 186) },
-  { kind: "turret", team: 0, lane: "top", tier: "outer", pos: v(14, 58) },
-  { kind: "turret", team: 0, lane: "mid", tier: "outer", pos: v(82, 118) },
-  { kind: "turret", team: 0, lane: "bot", tier: "outer", pos: v(142, 186) },
+  { kind: "nexus", team: 0, pos: lol(1551, 1659) },
+  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(1748, 2270) },
+  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(2177, 1807) },
+  { kind: "inhib", team: 0, lane: "top", pos: lol(1171, 3571) },
+  { kind: "inhib", team: 0, lane: "mid", pos: lol(3203, 3208) },
+  { kind: "inhib", team: 0, lane: "bot", pos: lol(3452, 1236) },
+  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: lol(1169, 4287) },
+  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: lol(3651, 3696) },
+  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: lol(4281, 1253) },
+  { kind: "turret", team: 0, lane: "top", tier: "inner", pos: lol(1512, 6699) },
+  { kind: "turret", team: 0, lane: "mid", tier: "inner", pos: lol(5048, 4812) },
+  { kind: "turret", team: 0, lane: "bot", tier: "inner", pos: lol(6919, 1483) },
+  { kind: "turret", team: 0, lane: "top", tier: "outer", pos: lol(981, 10441) },
+  { kind: "turret", team: 0, lane: "mid", tier: "outer", pos: lol(5846, 6396) },
+  { kind: "turret", team: 0, lane: "bot", tier: "outer", pos: lol(10504, 1029) },
 ];
 
 const SWAP_LANE: Record<LaneId, LaneId> = { top: "bot", mid: "mid", bot: "top" };
@@ -135,47 +136,48 @@ export const BRUSHES: { p: V2; r: number }[] = [
 export const RIVER: V2[] = [v(18, 18), v(38, 44), v(60, 64), v(84, 82), v(100, 100), v(116, 118), v(140, 136), v(162, 156), v(182, 182)];
 export const RIVER_WIDTH = 15;
 
-/** Basisplattform: Quadrat in der Ecke, Innenecke zur Kartenmitte abgeschrägt. */
+/** Punkt auf der entzerrten LoL-Draufsicht (1024², assets-src/jungle) in 200er-Koordinaten der blauen Seite. */
+const px = (x: number, y: number): V2 => ({ x: (x * 200) / 1024, z: (y * 200) / 1024 });
+/** Mauer der Basis zur Dschungelseite: Linie der Fackelsäulen wie auf der Kluft (Top-Ausgang links, Mid-Lücke, Bot unten). */
+const BASE_WALL_LINE: V2[] = [px(120, 680), px(170, 685), px(215, 695), px(250, 715), px(280, 740), px(305, 770), px(322, 805), px(332, 845), px(336, 885), px(338, 930), px(338, 1000)];
+const BASE_POLY: V2[] = [px(45, 1000), px(45, 680), ...BASE_WALL_LINE];
+
+/** Basisplattform (wie die Basis auf der Kluft). */
 export function inBaseArea(team: Team, p: V2) {
-  const m = team === 0 ? p : mirror(p);
-  const q = { x: m.x / MAP_SCALE, z: m.z / MAP_SCALE };
-  if (q.x < 5 || q.x > 57 || q.z < 143 || q.z > 195) return false;
-  // abgeschrägte Innenecke (oben rechts aus blauer Sicht)
-  if (q.x - q.z > 57 - 143 - 18) return false;
-  // leicht gerundete Außenecken
-  if (q.x < 13 && q.z < 151 && Math.hypot(q.x - 13, q.z - 151) > 8) return false;
-  if (q.x > 49 && q.z > 187 && Math.hypot(q.x - 49, q.z - 187) > 8) return false;
-  return true;
+  const q = toBlue(team, p);
+  return pointInPolygon(q, BASE_POLY);
+}
+
+function pointInPolygon(p: V2, poly: V2[]) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 /**
- * Mauer der Basis zur Dschungelseite (oben, abgeschrägte Ecke, rechts aus blauer Sicht), wie in LoL mit zwei Toren;
- * die Lanes laufen frei hindurch. Dahinter führt ein geschwungener Weg um die Basis von Top über Mid nach Bot.
+ * Mauer der Basis zur Dschungelseite, wie in LoL mit zwei Toren; die Lanes laufen frei hindurch.
+ * Dahinter führt ein geschwungener Weg um die Basis von Top über Mid nach Bot.
  */
 const BASE_WALL = 4;
 const BASE_GATES: V2[][] = [
-  [{ x: 28, z: 148 }, { x: 28, z: 136 }],
-  [{ x: 52, z: 172 }, { x: 64, z: 172 }],
+  [px(148, 702), px(148, 625)],
+  [px(312, 828), px(392, 828)],
 ];
-const BASE_WALK: V2[] = [
-  { x: 14, z: 139 },
-  { x: 37, z: 138.5 },
-  { x: 47, z: 145 },
-  { x: 55, z: 153 },
-  { x: 61.5, z: 163 },
-  { x: 62, z: 186 },
-];
+const BASE_WALK: V2[] = [px(55, 660), px(120, 660), px(175, 664), px(225, 675), px(265, 697), px(298, 723), px(325, 757), px(343, 795), px(354, 840), px(358, 885), px(360, 965)];
 export const BASE_WALK_WIDTH = 7;
-const toBlue = (team: Team, p: V2) => {
+function toBlue(team: Team, p: V2) {
   const m = team === 0 ? p : mirror(p);
   return { x: m.x / MAP_SCALE, z: m.z / MAP_SCALE };
-};
+}
 /** Liegt der Punkt in der Basismauer (Tore ausgenommen)? */
 export function inBaseWall(team: Team, p: V2) {
   if (!inBaseArea(team, p)) return false;
   const q = toBlue(team, p);
-  const edge = Math.min(q.z - 143, (q.z - q.x - 104) / Math.SQRT2, 57 - q.x) * MAP_SCALE;
-  if (edge > BASE_WALL) return false;
+  if (distToPolyline(q, BASE_WALL_LINE) * MAP_SCALE > BASE_WALL) return false;
   return !BASE_GATES.some((g) => distToPolyline(q, g) * MAP_SCALE < 3.2);
 }
 /** Liegt der Punkt auf dem Weg um die Basis oder in einem ihrer Tore? */
