@@ -116,7 +116,7 @@ export class Hud {
           <button class="mbtn" data-el="sound">Ton: An</button>
           <button class="mbtn" data-el="board">Punktetafel</button>
           <button class="mbtn danger" data-el="surrender">Aufgeben</button>
-          <p class="help">Handy: links ziehen zum Laufen, rechts angreifen. Fähigkeit antippen = automatisch zielen, ziehen = selbst zielen.<br>PC: Rechtsklick laufen/angreifen, Q W E R zum Zaubern (zur Maus), D Blitz, F Heilen, B Rückruf, P Laden, Alt+Q/W/E/R (oder Umschalt) verbessern.</p>
+          <p class="help">Handy: links ziehen zum Laufen, rechts angreifen. Fähigkeit antippen = automatisch zielen, ziehen = selbst zielen.<br>PC: Rechts- oder Linksklick laufen/angreifen (gedrückt halten = folgen), Q W E R zum Zaubern (zur Maus), D Blitz, F Heilen, B Rückruf, P Laden, Alt+Q/W/E/R (oder Umschalt) verbessern.</p>
         </div>
       </div>
       <div class="modal hidden" data-el="boardm">

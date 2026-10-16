@@ -112,7 +112,7 @@ export class Input {
         this.mouse.y = e.clientY;
         this.mouse.inside = true;
         // Loslassen verpasst (z. B. außerhalb des Fensters): Folgen beenden
-        if (this.rmb.held && !(e.buttons & 2)) this.rmb.held = false;
+        if (this.rmb.held && !(e.buttons & 3)) this.rmb.held = false;
       }
     });
     const up = (e: PointerEvent) => {
@@ -199,7 +199,9 @@ export class Input {
       const t = e.target as HTMLElement;
       // Knöpfe, Fenster und die Minimap reagieren nicht als Bewegungsbefehl
       if (t.closest("button") || t.closest(".modal") || t.closest(".tl")) return;
-      if (e.button !== 2) return;
+      // Rechts- und Linksklick laufen/greifen an; links, weil Browser-Mausgesten (Opera, Edge) beim Ziehen mit der
+      // rechten Taste Tabs öffnen oder die Seite verlassen und eine Webseite das nicht abschalten kann
+      if (e.button !== 2 && e.button !== 0) return;
       this.rightClick(e.clientX, e.clientY);
       const r = this.rmb;
       r.held = true;
@@ -212,7 +214,7 @@ export class Input {
     });
     // Loslassen überall erkennen, auch außerhalb des Spielfelds; bei Fokusverlust nichts hängen lassen
     this.on(window, "mouseup", (e: MouseEvent) => {
-      if (e.button === 2) this.rmb.held = false;
+      if (e.button === 2 || e.button === 0) this.rmb.held = false;
     });
     const release = () => {
       this.rmb.held = false;
