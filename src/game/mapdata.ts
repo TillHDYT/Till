@@ -37,17 +37,17 @@ export type StructureSpec =
   | { kind: "inhib"; team: Team; lane: LaneId; pos: V2 }
   | { kind: "nexus"; team: Team; pos: V2 };
 
-// Gebäude an den LoL-Positionen (wie auf der Kluft, passend zum Boden der Basis)
+// Gebäude an den LoL-Positionen; die in der Basis genau auf ihren Sockeln im Basisboden (assets-src/base-floor)
 const BLUE_STRUCTS: StructureSpec[] = [
-  { kind: "nexus", team: 0, pos: lol(1551, 1659) },
-  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(1748, 2270) },
-  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(2177, 1807) },
-  { kind: "inhib", team: 0, lane: "top", pos: lol(1171, 3571) },
-  { kind: "inhib", team: 0, lane: "mid", pos: lol(3203, 3208) },
-  { kind: "inhib", team: 0, lane: "bot", pos: lol(3452, 1236) },
-  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: lol(1169, 4287) },
-  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: lol(3651, 3696) },
-  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: lol(4281, 1253) },
+  { kind: "nexus", team: 0, pos: lol(1504, 1716) },
+  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(1724, 2242) },
+  { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(2125, 1760) },
+  { kind: "inhib", team: 0, lane: "top", pos: lol(1230, 3593) },
+  { kind: "inhib", team: 0, lane: "mid", pos: lol(3213, 3251) },
+  { kind: "inhib", team: 0, lane: "bot", pos: lol(3537, 1243) },
+  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: lol(1192, 4254) },
+  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: lol(3588, 3695) },
+  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: lol(4290, 1233) },
   { kind: "turret", team: 0, lane: "top", tier: "inner", pos: lol(1512, 6699) },
   { kind: "turret", team: 0, lane: "mid", tier: "inner", pos: lol(5048, 4812) },
   { kind: "turret", team: 0, lane: "bot", tier: "inner", pos: lol(6919, 1483) },
@@ -138,9 +138,14 @@ export const RIVER_WIDTH = 15;
 
 /** Punkt auf der entzerrten LoL-Draufsicht (1024², assets-src/jungle) in 200er-Koordinaten der blauen Seite. */
 const px = (x: number, y: number): V2 => ({ x: (x * 200) / 1024, z: (y * 200) / 1024 });
-/** Mauer der Basis zur Dschungelseite: Linie der Fackelsäulen wie auf der Kluft (Top-Ausgang links, Mid-Lücke, Bot unten). */
+/** Rand der Basis zur Dschungelseite entlang der Fackelsäulen wie auf der Kluft. */
 const BASE_WALL_LINE: V2[] = [px(120, 680), px(170, 685), px(215, 695), px(250, 715), px(280, 740), px(305, 770), px(322, 805), px(332, 845), px(336, 885), px(338, 930), px(338, 1000)];
 const BASE_POLY: V2[] = [px(45, 1000), px(45, 680), ...BASE_WALL_LINE];
+/** Mauerstücke zwischen den Fackelsäulen (Top-Ausgang, Mid-Ecke und Bot-Ausgang sind breite Treppen, also frei). */
+const BASE_WALL_SEGS: V2[][] = [
+  [px(124, 689), px(165, 692), px(202.5, 697), px(237, 714)],
+  [px(304, 777), px(318, 812), px(333, 850), px(335.5, 891)],
+];
 
 /** Basisplattform (wie die Basis auf der Kluft). */
 export function inBaseArea(team: Team, p: V2) {
@@ -164,7 +169,7 @@ function pointInPolygon(p: V2, poly: V2[]) {
  */
 const BASE_WALL = 4;
 const BASE_GATES: V2[][] = [
-  [px(148, 702), px(148, 625)],
+  [px(186, 714), px(181, 645)],
   [px(312, 828), px(392, 828)],
 ];
 const BASE_WALK: V2[] = [px(55, 660), px(120, 660), px(175, 664), px(225, 675), px(265, 697), px(298, 723), px(325, 757), px(343, 795), px(354, 840), px(358, 885), px(360, 965)];
@@ -177,7 +182,7 @@ function toBlue(team: Team, p: V2) {
 export function inBaseWall(team: Team, p: V2) {
   if (!inBaseArea(team, p)) return false;
   const q = toBlue(team, p);
-  if (distToPolyline(q, BASE_WALL_LINE) * MAP_SCALE > BASE_WALL) return false;
+  if (BASE_WALL_SEGS.every((seg) => distToPolyline(q, seg) * MAP_SCALE > BASE_WALL)) return false;
   return !BASE_GATES.some((g) => distToPolyline(q, g) * MAP_SCALE < 3.2);
 }
 /** Liegt der Punkt auf dem Weg um die Basis oder in einem ihrer Tore? */
