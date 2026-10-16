@@ -23,6 +23,8 @@ export class Input {
   private joy: { id: number; ox: number; oy: number; x: number; y: number } | null = null;
   private aim: Aim | null = null;
   attackMode: "auto" | "minion" | "turret" | null = null;
+  /** Ziel angeklickt: nach dessen Tod automatisch das nächste Ziel in der Nähe angreifen, bis ein anderer Befehl kommt */
+  private autoFight = false;
   private attackId = -1;
   private mouse = { x: 0, y: 0, inside: false };
   /** Rechte Maustaste gehalten: Champion folgt laufend dem Mauszeiger (PC). */
@@ -262,6 +264,7 @@ export class Input {
       if (k === "b") this.recall();
       if (k === "p") this.onShop();
       if (k === "s") {
+        this.autoFight = false;
         this.rmb.held = false;
         this.p.lockTarget = null;
         this.p.order = { type: "none" };
@@ -294,6 +297,7 @@ export class Input {
   }
 
   private recall() {
+    this.autoFight = false;
     if (this.p.recallUntil > 0) return;
     this.rmb.held = false;
     this.p.order = { type: "none" };
@@ -409,6 +413,7 @@ export class Input {
       return;
     }
     this.world.cancelRecall(p);
+    this.autoFight = false;
     p.order = { type: "move", x: pt.x, z: pt.z };
     // kleine Zielmarkierung, sparsam
     r.ringT -= dt;
@@ -455,6 +460,7 @@ export class Input {
   /** Gegner anvisieren: hinlaufen und angreifen, Fähigkeiten zielen auf ihn. */
   private selectTarget(u: Unit) {
     const p = this.p;
+    this.autoFight = true;
     this.world.cancelRecall(p);
     p.lockTarget = u;
     p.order = { type: "attack", target: u };
@@ -500,7 +506,8 @@ export class Input {
       this.selectTarget(best);
       return;
     }
-    // Klick auf den Boden hebt die Markierung auf
+    // Klick auf den Boden hebt die Markierung auf und beendet das Weiterkämpfen
+    this.autoFight = false;
     w.cancelRecall(p);
     p.lockTarget = null;
     const m = this.mouseWorld();
@@ -532,6 +539,7 @@ export class Input {
   apply(dt: number) {
     const p = this.p;
     if (!p.alive) {
+      this.autoFight = false;
       p.moveVec = null;
       this.view.indicators.hide();
       return;
@@ -548,6 +556,12 @@ export class Input {
     const km = this.keysMove;
     if (km.up || km.down || km.left || km.right) mv = { x: (km.right ? 1 : 0) - (km.left ? 1 : 0), z: (km.down ? 1 : 0) - (km.up ? 1 : 0) };
 
+    // Ziel getötet (oder verloren): nächstes Ziel in der Nähe anvisieren und weiterkämpfen
+    if (this.autoFight && !mv && (p.order.type !== "attack" || !this.world.attackable(p.order.target, p.team))) {
+      const next = this.world.pickTarget(p, "auto", Math.max(8, p.stats.range + 4));
+      if (next) this.selectTarget(next);
+    }
+    if (mv) this.autoFight = false;
     this.acquireT -= dt;
     if (this.attackMode && this.acquireT <= 0) {
       this.acquireT = 0.15;
