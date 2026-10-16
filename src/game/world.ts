@@ -985,6 +985,7 @@ export class World {
       this.castLock = null;
     }
     this.events.push({ type: "cast", unit: c, slot });
+    c.lastCast = { slot, n: c.lastCast.n + 1 };
     return true;
   }
 

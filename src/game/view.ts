@@ -39,7 +39,7 @@ function angleLerp(a: number, b: number, t: number) {
   return a + d * t;
 }
 
-type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; beam: THREE.Mesh | null; shield: THREE.Mesh };
+type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh };
 type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number; rig?: ChampRig };
 type StructView = {
   model: StructModel;
@@ -158,7 +158,7 @@ export class View {
       shield.position.y = 1.3;
       shield.visible = false;
       model.root.add(shield);
-      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, beam: null, shield });
+      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, castN: 0, beam: null, shield });
     }
 
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -233,11 +233,13 @@ export class View {
 
     this.handleFx();
 
-    // Fähigkeiten-Animationen der Modelle starten
-    for (const e of w.events) {
-      if (e.type !== "cast") continue;
-      const rig = this.champs.get(e.unit.id)?.model.rig;
-      if (rig) playCast(rig, e.slot);
+    // Fähigkeiten-Animationen der Modelle starten (über den Zähler am Champion: Zauber des Spielers kommen aus der
+    // Eingabe außerhalb des Spielschritts, ihr Ereignis ist beim Zeichnen schon gelöscht)
+    for (const v of this.champs.values()) {
+      const lc = v.unit.lastCast;
+      if (lc.n === v.castN) continue;
+      v.castN = lc.n;
+      if (v.model.rig) playCast(v.model.rig, lc.slot);
     }
 
     // Champions

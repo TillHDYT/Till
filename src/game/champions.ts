@@ -105,7 +105,7 @@ export const CHAMPIONS: ChampDef[] = [
         ai: "fight",
         cast: (w, c, aim, rank) => {
           const d = dirFrom(c, aim);
-          const dmg = r4([70, 110, 150, 190], rank) + c.stats.ad * 0.8;
+          const dmg = r4([95, 145, 195, 245], rank) + c.stats.ad * 1.0;
           c.anim.cast = 0.4;
           // so weit und so schnell wie in der Animation (3,2 m bei 1,75 m Körpergröße, rund 0,8 s)
           w.dash(c, c.x + d.dx * 7.5, c.z + d.dz * 7.5, 9.5, {
@@ -117,7 +117,7 @@ export const CHAMPIONS: ChampDef[] = [
       },
       {
         name: "Kampfschrei",
-        desc: "Gewinnt kurz Lauftempo und einen Schild.",
+        desc: "Brüllt: Schaden an Gegnern in der Nähe, dazu kurz Lauftempo und ein Schild.",
         icon: "📯",
         targeting: "self",
         range: 0,
@@ -125,6 +125,8 @@ export const CHAMPIONS: ChampDef[] = [
         mana: [40, 40, 40, 40],
         ai: "self",
         cast: (w, c, _aim, rank) => {
+          const dmg = r4([50, 80, 110, 140], rank) + c.stats.ad * 0.5;
+          for (const u of w.enemiesInRadius(c.team, c.x, c.z, 3.5)) w.damage(c, u, dmg, "phys", { ability: true });
           w.addBuff(c, { id: "varokW", until: w.t + 2.2, mods: { ms: 40 } });
           w.shieldUnit(c, 40 + rank * 40 + c.stats.maxHp * 0.08, 3);
           w.fx({ type: "shout", x: c.x, z: c.z, r: 3, color: 0xffd27a, owner: c });
@@ -142,7 +144,7 @@ export const CHAMPIONS: ChampDef[] = [
         ai: "engage",
         cast: (w, c, aim, rank) => {
           const d = dirFrom(c, aim);
-          const dmg = r4([50, 80, 110, 140], rank) + c.stats.ad * 0.6;
+          const dmg = r4([80, 120, 160, 200], rank) + c.stats.ad * 0.8;
           // Rutsch-Angriff: Strecke wie in der Animation (3,5 m bei 1,75 m Körpergröße), langsamer passend zur Animation
           w.dash(c, c.x + d.dx * 8, c.z + d.dz * 8, 14, {
             hitRadius: 1.8,
@@ -165,7 +167,7 @@ export const CHAMPIONS: ChampDef[] = [
         ai: "engage",
         cast: (w, c, aim, rank) => {
           const p = clampAim(c, aim, 9);
-          const dmg = r4([150, 275, 400], rank) + c.stats.ad * 1.0;
+          const dmg = r4([200, 350, 500], rank) + c.stats.ad * 1.2;
           // Sprung so schnell, dass die Landung auf den Schwerthieb der Animation fällt (1,2 s bei Tempo 1,3)
           w.dash(c, p.x, p.z, Math.max(6, Math.hypot(p.x - c.x, p.z - c.z) / (1.2 / 1.3)), {
             leap: true,

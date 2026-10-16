@@ -192,6 +192,8 @@ export class Champion extends Unit {
   swing: Swing | null = null;
   /** Vom Spieler anvisierter Gegner (Rechtsklick oder Antippen): Fähigkeiten zielen automatisch darauf. */
   lockTarget: Unit | null = null;
+  /** zuletzt eingesetzte Fähigkeit (Zähler steigt bei jedem Zauber), damit die Ansicht ihre Animation startet */
+  lastCast = { slot: -1, n: 0 };
   lastAttackChampAt = -99;
   name: string;
   redBuff = false;
