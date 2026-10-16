@@ -29,10 +29,14 @@ function setup(edge = 1.5) {
 }
 
 type Log = { t: number; amount: number; attack: boolean; swing: number }[];
+// Fernkämpfer: geprüft wird der Abschuss (Pfeil verlässt den Bogen), der Schaden folgt nach der Flugzeit
+const RANGED = !!KIRA.ranged;
 /** Läuft n Sekunden; sammelt Kiras Schaden am Ziel und die Startzeiten der Schläge. */
 function run(w: World, k: Champion, target: Unit, secs: number, each?: (t: number) => void) {
   const hits: Log = [];
   const starts: number[] = [];
+  const seen = new Set<number>();
+  const dmgs: number[] = [];
   let last: unknown = null;
   const end = w.t + secs;
   while (w.t < end - 1e-9) {
@@ -40,9 +44,15 @@ function run(w: World, k: Champion, target: Unit, secs: number, each?: (t: numbe
     w.update(DT);
     if (k.swing && k.swing !== last) starts.push(k.swing.start);
     last = k.swing;
-    for (const e of w.events) if (e.type === "dmg" && e.unit === target && e.src === k) hits.push({ t: w.t, amount: e.amount, attack: true, swing: k.anim.swing });
+    if (RANGED) {
+      for (const p of w.projectiles) if (p.owner === k && !seen.has(p.id)) {
+        seen.add(p.id);
+        hits.push({ t: w.t, amount: NaN, attack: true, swing: k.anim.swing });
+      }
+      for (const e of w.events) if (e.type === "dmg" && e.unit === target && e.src === k) dmgs.push(e.amount);
+    } else for (const e of w.events) if (e.type === "dmg" && e.unit === target && e.src === k) hits.push({ t: w.t, amount: e.amount, attack: true, swing: k.anim.swing });
   }
-  return { hits, starts };
+  return { hits, starts, dmgs };
 }
 
 console.log(`Schlaganimation: ${SW.clip.toFixed(3)} s, Treffer bei ${SW.hit.toFixed(3)} s (${((SW.hit / SW.clip) * 100).toFixed(1)} %)`);
@@ -60,8 +70,9 @@ console.log(`Schlaganimation: ${SW.clip.toFixed(3)} s, Treffer bei ${SW.hit.toFi
   const hp0 = foe.hp;
   k.order = { type: "attack", target: foe };
   const rate = swingRate(SW, k.stats.as);
-  const { hits, starts } = run(w, k, foe, 1 / k.stats.as - 0.05);
+  const { hits, starts, dmgs } = run(w, k, foe, 1 / k.stats.as - 0.05);
   const start = starts[0];
+  if (RANGED) hits.forEach((h, i) => (h.amount = dmgs[i] ?? NaN));
   check("2  ein Befehl startet genau einen Schlag", starts.length === 1, `${starts.length} Schlag/Schläge`);
   const early = hits.filter((h) => h.t < start + SW.hit / rate - 1e-9);
   check("4  kein Schaden während des Ausholens", early.length === 0);

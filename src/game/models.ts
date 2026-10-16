@@ -14,6 +14,10 @@ import nexusUrl from "../assets/nexus.glb";
 import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
+import lyraUrl from "../assets/models/Lyra.glb";
+import lyraAttackUrl from "../assets/models/Lyra_Attack.glb";
+import lyraDeathUrl from "../assets/models/Lyra_Death.glb";
+import lyraIdleUrl from "../assets/models/Lyra_Idle.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
 import assassinAttackUrl from "../assets/models/Assassine_Attack.glb";
@@ -140,7 +144,7 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl, lyra: lyraUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
@@ -158,6 +162,12 @@ const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: Anim
     attack2: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (gespiegelt)", hit: 0.42, fremd: true, spiegeln: true },
     death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)" },
     fist: { url: assassinAttackUrl, file: "src/assets/models/Assassine_Attack.glb (Boxen, nur die Faust)" },
+  },
+  // Lyra: Mixamo-Bogenschützin (Erika Archer), Bogen und Pfeil sind eigene Teile des Modells
+  lyra: {
+    idle: { url: lyraIdleUrl, file: "src/assets/models/Lyra_Idle.glb (aus BogenSchütze stehend.fbx)" },
+    attack: { url: lyraAttackUrl, file: "src/assets/models/Lyra_Attack.glb (aus BogenSchütze Schuss Animation.fbx, ab 0,80 s)" },
+    death: { url: lyraDeathUrl, file: "src/assets/models/Lyra_Death.glb (aus BogenSchütze Todes Animation.fbx)" },
   },
   thorne: {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
@@ -177,7 +187,7 @@ CHAMP_ANIMS["monster:blue"] = {
 // Warrok steht gebückt, daher größer als die Höhe in der Grundhaltung
 const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
-const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, "monster:blue": 5 };
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, "monster:blue": 5 };
 
 type RigAsset = {
   scene: THREE.Object3D;

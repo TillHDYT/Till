@@ -635,8 +635,9 @@ export class World {
     if (u instanceof Champion) {
       this.cancelRecall(u);
       const sw = u.def.swing;
-      if (sw && !u.def.ranged) {
-        // Schlaganimation startet; Schaden erst am Trefferzeitpunkt (updateSwing). Bis dahin bleibt der Champion stehen.
+      if (sw) {
+        // Schlaganimation startet; Schaden (bzw. bei Fernkampf der Schuss) erst am Trefferzeitpunkt (updateSwing).
+        // Bis dahin bleibt der Champion stehen.
         const rate = swingRate(sw, u.stats.as);
         u.swing = { target, start: this.t, hitAt: this.t + sw.hit / rate, end: this.t + sw.clip / rate, hit: false };
         u.lockT = Math.max(u.lockT, sw.hit / rate);
@@ -710,7 +711,8 @@ export class World {
       }
     };
     if (u.def.ranged) {
-      this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff, apply, 1.5);
+      // Geschoss startet auf Höhe von Bogen bzw. Händen
+      this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff, apply, u.height * 0.6);
     } else {
       apply(target);
       this.addFx({ type: "hit", x: target.x, z: target.z, color: crit ? 0xffe060 : 0xffffff });
@@ -1812,7 +1814,9 @@ export class World {
         p.x += p.dx * step;
         p.z += p.dz * step;
         const k = Math.min(1, (d - step) / p.range);
-        p.y = 1.2 + (p.y0 - 1.2) * k;
+        // vom Start zur Brusthöhe des Ziels; Pfeile fliegen in einem flachen Bogen
+        const y1 = Math.max(0.8, Math.min(2.4, tg.height * 0.55));
+        p.y = y1 + (p.y0 - y1) * k + (p.visual === "arrow" ? Math.sin(Math.PI * k) * Math.min(1, p.range * 0.05) : 0);
         continue;
       }
       const step = p.speed * dt;

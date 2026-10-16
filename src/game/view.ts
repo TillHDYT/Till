@@ -23,7 +23,8 @@ import {
   type ChampModel,
   type StructModel,
 } from "./models";
-import { buildTerrain, type Quality, type Terrain } from "./terrain";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { buildTerrain, colored, mat4, type Quality, type Terrain } from "./terrain";
 import { Champion, Minion, Monster, Structure, type MinionType, type Unit } from "./units";
 import type { Area, Projectile, World } from "./world";
 
@@ -70,7 +71,7 @@ export class View {
   private up = new THREE.Vector3(0, 1, 0);
   private projGeo = {
     sphere: new THREE.SphereGeometry(1, 10, 8),
-    arrow: new THREE.BoxGeometry(0.09, 0.09, 1.1),
+    arrow: arrowGeometry(),
     big: new THREE.OctahedronGeometry(1, 0),
     cone: new THREE.ConeGeometry(0.12, 0.6, 4),
     chain: new THREE.CylinderGeometry(0.05, 0.05, 1, 4),
@@ -574,6 +575,8 @@ export class View {
     mesh.quaternion.setFromUnitVectors(this.up, this.tmpP.set(dx / len, dy / len, dz / len));
   }
 
+  private arrowMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+
   private makeProj(p: Projectile): THREE.Object3D {
     const team = p.team === 0 || p.team === 1 ? p.team : 0;
     const G = this.projGeo;
@@ -581,7 +584,7 @@ export class View {
     let o: THREE.Object3D;
     switch (p.visual) {
       case "arrow": {
-        o = new THREE.Mesh(G.arrow, basic(p.color));
+        o = new THREE.Mesh(G.arrow, this.arrowMat);
         break;
       }
       case "bigarrow": {
@@ -686,7 +689,8 @@ export class View {
       const visible = p.team === this.playerTeam || p.team === 2 || owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
       o.visible = visible;
       const y = g.groundAt(p.x, p.z) + p.y;
-      if (p.visual === "turret") {
+      if (p.visual === "turret" || p.visual === "arrow") {
+        // in Flugrichtung ausrichten, auch nach oben und unten (Pfeile im Bogen)
         const prev = o.userData.prev as THREE.Vector3 | undefined;
         o.position.set(p.x, y, p.z);
         if (prev && prev.distanceToSquared(o.position) > 1e-4) o.lookAt(o.position.clone().multiplyScalar(2).sub(prev));
@@ -701,6 +705,7 @@ export class View {
           const tc = new THREE.Color(TEAM_GLOW[p.team === 1 ? 1 : 0]);
           for (let k = 0; k < 2; k++) this.particles.emit(p.x + (Math.random() - 0.5) * 0.3, y + (Math.random() - 0.5) * 0.3, p.z + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, tc, 0.75, 0.32, 0);
         }
+        if (p.visual === "arrow" && Math.random() < 0.6) this.particles.emit(p.x, y, p.z, 0, 0, 0, new THREE.Color(p.color), 0.45, 0.22, 0);
         if (p.visual === "bigarrow") this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2, new THREE.Color(0xbff0ff), 0.8, 0.5, 0);
         if (p.visual === "dragon" || p.visual === "baron") this.particles.emit(p.x, y, p.z, 0, 0.3, 0, new THREE.Color(p.color), 0.8, 0.3, 0);
       }
@@ -909,4 +914,15 @@ export class View {
   champColor(c: Champion) {
     return c.isPlayer ? 0x6dff5a : TEAM_COLOR[c.team === this.playerTeam ? 0 : 1];
   }
+}
+
+/** Pfeil entlang +z: Holzschaft, Stahlspitze vorne, zwei gekreuzte Federn hinten. */
+function arrowGeometry() {
+  const along = Math.PI / 2;
+  return mergeGeometries([
+    colored(new THREE.CylinderGeometry(0.035, 0.035, 1.3, 6), 0x7a5a36, mat4(0, 0, 0, 1, 1, 1, along)),
+    colored(new THREE.ConeGeometry(0.09, 0.28, 6), 0xcfd8e0, mat4(0, 0, 0.79, 1, 1, 1, along)),
+    colored(new THREE.PlaneGeometry(0.2, 0.34), 0xe8eef8, mat4(0, 0, -0.5, 1, 1, 1, 0, along)),
+    colored(new THREE.PlaneGeometry(0.2, 0.34), 0xe8eef8, mat4(0, 0, -0.5, 1, 1, 1, along, along)),
+  ])!;
 }

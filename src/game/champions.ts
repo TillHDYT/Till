@@ -183,6 +183,9 @@ export const CHAMPIONS: ChampDef[] = [
     levelOrder: [3, 0, 1, 2],
     build: ["boots", "stormblade", "infinity", "bloodthirster", "swiftboots", "spiritcloak"],
     look: { body: 0x2f4f8f, accent: 0xdfe8ff, skin: 0xf0d0b8, hair: 0xeeeeff, weapon: "bow", bulk: 0.92, cape: 0x5e86d8 },
+    // Schuss (Lyra_Attack.glb): nur Spannen und Zielen ab dem aufgelegten Pfeil (0,80-1,33 s der Mixamo-Animation),
+    // losgelassen kurz vor Schluss; 1,2-mal so schnell abgespielt
+    swing: { clip: 0.533 / 1.2, hit: 0.5 / 1.2 },
     abilities: [
       {
         name: "Pfeilhagel",

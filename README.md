@@ -158,6 +158,15 @@ sich nie. Die Stiche kommen vom Meshy-Modell (gleiches Mixamo-Skelett, nur der S
 derselbe Stich gespiegelt; die Finger halten die Faust aus der Boxanimation. Fremde Animationen bekommen die Hüft- und
 Fußhöhe dieses Modells.
 
+## Lyras Modell (Bogenschützin)
+
+Lyra ist die Mixamo-Bogenschützin „Erika Archer“ (`BogenSchütze ….fbx`, je mit Skin): Modell aus der Laufanimation
+(`champion_fbx.py`, Texturen 1024, Normal-Map als JPEG, Alpha-Texturen mit `glb_png_palette.py`), Stehen, Schuss und
+Sterben mit `champion_anim.py`. Vom Schuss bleibt nur Spannen und Zielen ab dem aufgelegten Pfeil (`--von 0.80`); der
+Pfeil verlässt den Bogen kurz vor Schluss (`swing` in `champions.ts`, gilt jetzt auch für Fernkämpfer). Der Pfeil im
+Flug ist ein kleines 3D-Modell (Schaft, Spitze, Federn), fliegt in einem flachen Bogen zur Brusthöhe des Ziels und zieht
+eine leichte Spur.
+
 ## 3D-Modell der Inhibitoren
 
 Die Inhibitoren sind das Modell aus `Inhibitor 1.0.zip` (Meshy-Stil, handbemalt, 902.000 Dreiecke): blaue
