@@ -11,7 +11,7 @@
     "sim": "tsx scripts/sim.ts",
     "swing-test": "tsx scripts/swing-test.ts",
     "map": "tsx scripts/map-preview.ts map.png",
-    "single": "vite build && node scripts/artifact.mjs"
+    "single": "vite build --mode single && node scripts/artifact.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"
