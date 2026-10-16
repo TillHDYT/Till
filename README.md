@@ -148,6 +148,13 @@ Mesh-Inseln in der Mitte) als eigenes Teil `Crystal` ab, glättet die Normalen u
 python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.glb src/assets/
 ```
 
+## Kiras Dolche
+
+Die Dolche sind ein eigenes, starres Modell (`src/assets/daggers.glb` aus `Schwerter 3D Modell.fbx`, das eigentlich ein
+ZIP mit FBX und Texturen ist; Aufbereitung mit `assets-src/daggers.py` und `glb_textures.py ... 1024`). Im Spiel hängen
+sie an den Handknochen (`CHAMP_PROPS` in `models.ts`), dadurch bewegen sie sich mit jeder Animation mit, ohne sich zu
+verbiegen.
+
 ## 3D-Modell der Inhibitoren
 
 Die Inhibitoren sind das Modell aus `Inhibitor 1.0.zip` (Meshy-Stil, handbemalt, 902.000 Dreiecke): blaue

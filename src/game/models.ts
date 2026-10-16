@@ -14,6 +14,7 @@ import nexusUrl from "../assets/nexus.glb";
 import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
+import daggersUrl from "../assets/daggers.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
 import assassinAttackUrl from "../assets/models/Assassine_Attack.glb";
@@ -240,7 +241,68 @@ export type ChampRig = {
 };
 
 /** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
+/**
+ * Waffen als eigene, starre Modelle an den Handknochen (verbiegen sich nicht mit der Haut).
+ * pos/rot im Raum des Handknochens (Mixamo: +y zeigt zu den Fingern), len = Länge im Spiel.
+ */
+type PropSpec = { node: string; bone: string; pos: [number, number, number]; rot: [number, number, number]; len: number };
+const CHAMP_PROPS: Record<string, PropSpec[]> = {
+  kira: [
+    // Griff in der Faust (zwischen Fingerknöcheln und Handballen), Klinge kommt auf der Daumenseite heraus,
+    // entlang der Linie Kleinfinger -> Zeigefinger gemessen
+    { node: "DaggerR", bone: "mixamorigRightHand", pos: [-0.01, 0.25, 0.065], rot: [0, 0, -1.11], len: 1.15 },
+    { node: "DaggerL", bone: "mixamorigLeftHand", pos: [0.01, 0.25, 0.065], rot: [0, 0, 1.11], len: 1.15 },
+  ],
+};
+/** Modelle der Waffen nach Knotenname (Geometrie mit Drehpunkt am Griff, Klinge nach +y, Länge = Höhe der Box) */
+const propMeshes = new Map<string, { mesh: THREE.Mesh; len: number }>();
+let propEnv: THREE.Texture | null = null;
+
+async function loadProps() {
+  try {
+    const gltf = await loadGlbOffline(daggersUrl);
+    gltf.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      if (mat.map) mat.map.anisotropy = 4;
+      if (propEnv) mat.envMap = propEnv;
+      mat.envMapIntensity = 0.8;
+      m.geometry.computeBoundingBox();
+      const b = m.geometry.boundingBox!;
+      // der Knoten heißt DaggerL/DaggerR, das Mesh darunter hat den Namen aus dem Modell
+      const name = m.parent && m.parent.name.startsWith("Dagger") ? m.parent.name : m.name;
+      propMeshes.set(name, { mesh: m, len: b.max.y - b.min.y });
+    });
+  } catch (err) {
+    console.error("Waffenmodelle konnten nicht geladen werden, Champions bleiben ohne:", err);
+  }
+}
+
+/** Waffen an die Handknochen des Modells hängen; Größe unabhängig vom Maßstab des Skeletts. */
+function attachProps(id: string, model: THREE.Object3D) {
+  const specs = CHAMP_PROPS[id];
+  if (!specs) return;
+  model.updateMatrixWorld(true);
+  const ws = new THREE.Vector3();
+  for (const sp of specs) {
+    const src = propMeshes.get(sp.node);
+    const bone = model.getObjectByName(sp.bone);
+    if (!src || !bone) continue;
+    const m = new THREE.Mesh(src.mesh.geometry, src.mesh.material);
+    m.name = sp.node;
+    m.castShadow = true;
+    bone.getWorldScale(ws);
+    const k = sp.len / src.len / ws.x;
+    m.scale.setScalar(k);
+    m.position.set(sp.pos[0] / ws.x, sp.pos[1] / ws.x, sp.pos[2] / ws.x);
+    m.rotation.set(...sp.rot);
+    bone.add(m);
+  }
+}
+
 export async function loadChampionModels() {
+  const props = loadProps();
   await Promise.all(
     Object.entries({ ...CHAMP_MODELS, ...MONSTER_MODELS }).map(async ([id, url]) => {
       if (rigAssets.has(id)) return;
@@ -270,6 +332,7 @@ export async function loadChampionModels() {
       }
     }),
   );
+  await props;
 }
 
 /** Zeitpunkte im Laufzyklus, an denen die Füße am dichtesten beieinander sind: dort wirkt das Stehenbleiben ruhig. */
@@ -442,6 +505,8 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
   const { model, rig } = buildRig(asset, 2.6 * look.bulk * CHAMP_SIZE);
   if (asset.noUv) applyLookMaterials(model, look);
+  const id = [...rigAssets].find(([, a]) => a === asset)?.[0];
+  if (id) attachProps(id, model);
   body.add(model);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
   const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
@@ -2160,6 +2225,13 @@ export function setGuardianEnvironment(renderer: THREE.WebGLRenderer) {
   for (const m of guardian.materials) {
     m.envMap = env;
     m.envMapIntensity = 0.55;
+    m.needsUpdate = true;
+  }
+  // Metall der Waffen spiegelt dieselbe Umgebung
+  propEnv = env;
+  for (const { mesh } of propMeshes.values()) {
+    const m = mesh.material as THREE.MeshStandardMaterial;
+    m.envMap = env;
     m.needsUpdate = true;
   }
 }
