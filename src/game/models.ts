@@ -1126,6 +1126,8 @@ type InhibAsset = {
   pillarR: number;
 };
 const INHIB_STENCIL = 3;
+/** so weit sitzt das Modell im Boden (der Ringboden ist flach, nur die Laschen außen hängen über) */
+const INHIB_SINK = 0.6;
 let inhibAsset: InhibAsset | null = null;
 
 /** Lädt das Inhibitor-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Inhibitor. */
@@ -1253,12 +1255,25 @@ function inhibRubble(team: 0 | 1, ring: THREE.BufferGeometry, pivot: THREE.Vecto
 /** Inhibitor aus dem Modell: offener Steinring, die Kristallsäule mit Klammerkäfig schwebt, dreht sich und leuchtet. */
 function buildInhibitorModel(team: 0 | 1, a: InhibAsset): StructModel {
   const root = new THREE.Group();
+  // Die äußeren Steinlaschen beginnen im Modell erst 0.8-1.0 über dem Boden: abgesenkt und mit Kontaktschatten,
+  // damit der Ring auf dem Boden steht statt zu schweben
+  const body = new THREE.Group();
+  body.position.y = -INHIB_SINK;
+  root.add(body);
+  const contact = new THREE.Mesh(
+    new THREE.CircleGeometry(4.6, 40),
+    new THREE.MeshBasicMaterial({ color: 0x000000, map: glowTexture(), transparent: true, opacity: 0.7, depthWrite: false }),
+  );
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.y = 0.04;
+  contact.renderOrder = 1;
+  root.add(contact);
   const base = new THREE.Mesh(a.base.geometry, a.materials[team]);
   base.castShadow = true;
   base.receiveShadow = true;
-  root.add(base);
+  body.add(base);
   const top = new THREE.Group();
-  root.add(top);
+  body.add(top);
   const crystal = new THREE.Group();
   crystal.position.copy(a.crystal.position);
   const gem = new THREE.Mesh(a.crystal.geometry, a.gems[team]);
@@ -1285,9 +1300,9 @@ function buildInhibitorModel(team: 0 | 1, a: InhibAsset): StructModel {
   stump.castShadow = shards.castShadow = true;
   rubble.add(stump, shards);
   rubble.visible = false;
-  root.add(rubble);
+  body.add(rubble);
   const outline = silhouetteOutline(a.outlineGeo, 0xff2a1a, 0.08, INHIB_STENCIL);
-  root.add(outline);
+  body.add(outline);
   return {
     root,
     crystal,
@@ -1297,7 +1312,7 @@ function buildInhibitorModel(team: 0 | 1, a: InhibAsset): StructModel {
     crystalY: crystal.position.y,
     outline,
     // Funken steigen aus dem Spalt zwischen Säule und Ring auf
-    fxY: a.ringTop * 0.8,
+    fxY: a.ringTop * 0.8 - INHIB_SINK,
     fxR: [a.pillarR + 0.15, a.pillarR + 0.7],
     // Feuerschalen außerhalb des breiten Rings (Rand seitlich bis etwa 3.7)
     sideX: 5.4,

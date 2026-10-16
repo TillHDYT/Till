@@ -178,6 +178,19 @@ export class Input {
       this.recall();
     });
 
+    // Mittlere Taste und Seitentasten der Maus (Zurück/Vorwärts) sollen die Seite nicht verlassen oder Tabs öffnen
+    const noNav = (e: MouseEvent) => {
+      if (e.button === 1 || e.button === 3 || e.button === 4) e.preventDefault();
+    };
+    this.on(window, "mousedown", noNav);
+    this.on(window, "mouseup", noNav);
+    this.on(window, "auxclick", noNav);
+    // Neu laden oder Tab schließen (z. B. Strg+W/Strg+R aus Versehen) während der Partie erst nachfragen
+    this.on(window, "beforeunload", (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    });
+
     // Maus auf dem Spielfeld
     this.on(this.canvas, "contextmenu", (e: MouseEvent) => e.preventDefault());
     this.on(root, "contextmenu", (e: MouseEvent) => e.preventDefault());
@@ -233,7 +246,8 @@ export class Input {
       if (this.paused()) return;
       const slot = { q: 0, w: 1, e: 2, r: 3 }[k];
       if (slot !== undefined) {
-        if (e.ctrlKey || e.altKey) {
+        // Verbessern mit Alt oder Umschalt; Strg+W schließt im Browser den Tab und lässt sich nicht abfangen
+        if (e.altKey || e.shiftKey || e.ctrlKey) {
           this.world.levelUp(this.p, slot);
           e.preventDefault();
           return;
