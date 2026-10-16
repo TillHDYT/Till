@@ -1,6 +1,6 @@
 # Bereitet das Meshy-Modell „crystal fountain“ (Stein, Gold, blaue Kristalle) als Nexus für das Spiel auf:
 #   python nexus.py <eingabe.fbx|glb> <ausgabe-ordner>
-# - Sockelboden auf y=0, Außenradius 6.5: füllt den runden Sockel des Nexus im Basisboden (assets-src/base-floor)
+# - Sockelboden auf y=0, Außenradius 9.4: füllt die silberne Sockelfläche des Nexus im Basisboden (assets-src/base-floor)
 # - großer blauer Mittelkristall als eigenes Teil "Crystal" (leuchtet im Spiel in Teamfarbe und dreht sich)
 # - weiche Normalen (das Original hat keine), Material ohne Metall (Licht ist in die Textur gemalt)
 # - Textur als JPEG (2K)
@@ -16,7 +16,7 @@ import numpy as np
 from mathutils import Vector
 
 SRC, OUT = sys.argv[-2], sys.argv[-1]
-BASE_R = 6.5
+BASE_R = 9.4
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)

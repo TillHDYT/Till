@@ -77,6 +77,16 @@ for (X, Y), r in CAMPS.values():
         wall[np.hypot(xx - px, zz - pz) < 2.8] = False
     print("Eingang geschnitten bei", (round(cx), round(cz)), "->", (round(tx), round(tz)))
 
+# zusätzliche Durchgänge (Spielkoordinaten bei MAP 300, Strecke und Breite), von Hand nach Spieltest gesetzt
+PASSAGES = [
+    ((127, 200), (140, 200), 6.0),  # links am Eingang der Raptoren durch die dünne Wand
+]
+for (ax, az), (bx, bz), w in PASSAGES:
+    ax, az, bx, bz = (c * MAP / 300 for c in (ax, az, bx, bz))
+    for t in np.linspace(0, 1, 100):
+        px_, pz_ = ax + (bx - ax) * t, az + (bz - az) * t
+        wall[np.hypot(xx - px_, zz - pz_) < w / 2 * MAP / 300] = False
+
 # blaue Hälfte spiegeln (z > x ist Blau)
 blue = zz > xx
 mir = wall[::-1, ::-1]

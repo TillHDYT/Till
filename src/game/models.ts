@@ -1814,14 +1814,16 @@ function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   // Trümmer: abgebrochener, erloschener Kristall und umgestürzte Splitter über dem Rand der Schale
   const cg = asset.crystal.geometry;
   const cy = asset.crystal.position.y;
+  // Trümmer waren für einen Sockel mit Radius 4.8 gesetzt; mit dem Modell mitwachsen
+  const k = cy / 3.9;
   const dead = team === 0 ? 0x34405a : 0x5a3434;
   const rubble = new THREE.Mesh(
     merge([
       colored(cg, dead, mat4(0, cy * 0.55, 0, 0.62, 0.42, 0.62, 0.08, 0.4, 0.05)),
-      colored(cg, 0x3d3842, mat4(1.25, 3.4, 0.6, 0.34, 0.34, 0.34, 0.2, 0.6, 1.25)),
-      colored(cg, dead, mat4(-1.2, 3.3, 0.5, 0.3, 0.3, 0.3, -0.3, 2.1, -1.1)),
-      colored(cg, 0x3d3842, mat4(0.2, 3.5, -1.3, 0.28, 0.28, 0.28, 1.2, 4.0, 0.2)),
-      colored(new THREE.DodecahedronGeometry(0.55, 0), 0x3a3238, mat4(-0.6, 3.0, 1.35)),
+      colored(cg, 0x3d3842, mat4(1.25 * k, 3.4 * k, 0.6 * k, 0.34, 0.34, 0.34, 0.2, 0.6, 1.25)),
+      colored(cg, dead, mat4(-1.2 * k, 3.3 * k, 0.5 * k, 0.3, 0.3, 0.3, -0.3, 2.1, -1.1)),
+      colored(cg, 0x3d3842, mat4(0.2 * k, 3.5 * k, -1.3 * k, 0.28, 0.28, 0.28, 1.2, 4.0, 0.2)),
+      colored(new THREE.DodecahedronGeometry(0.55 * k, 0), 0x3a3238, mat4(-0.6 * k, 3.0 * k, 1.35 * k)),
     ]),
     statueMat(),
   );
