@@ -16,7 +16,8 @@ import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
-import kiraUrl from "../assets/models/Kira.glb";
+import assassinAttackUrl from "../assets/models/Assassine_Attack.glb";
+import kiraSwordsUrl from "../assets/kira_swords.glb";
 import kiraAttack1Url from "../assets/models/Kira_Attack1.glb";
 import tankUrl from "../assets/models/Tank.glb";
 import tankIdleUrl from "../assets/models/Tank_Idle.glb";
@@ -139,25 +140,24 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: kiraUrl, thorne: tankUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
 /** fremd: Animation eines anderen Modells mit gleichem Skelett; ihre Hüfthöhe wird an dieses Modell angepasst. */
 /** spiegeln: Animation seitenverkehrt abspielen (linke und rechte Knochen getauscht, z. B. derselbe Stich mit dem anderen Arm). */
 type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean };
-const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
-  // Kira: Modell mit den Schwertern in den Händen (Mixamo, Klingen starr am Handknochen, assets-src/rigid_swords.py);
-  // Laufen, Stehen und Sterben vom früheren Kira-Modell mit gleichem Mixamo-Skelett
+/** fist: Fingerhaltung (erstes Bild) für Laufen, Stehen und Schläge, z. B. eine geschlossene Faust um eine Waffe. */
+const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc; fist?: AnimSrc }> = {
+  // Kira: Mixamo-Modell (Schwerter auf dem Rücken) mit den Schwertern aus "Schwerter 3D Modell" in den Händen (CHAMP_PROPS);
+  // Schwertstich vom Meshy-Modell mit gleichem Skelett (nur der Stich, --von/--bis), zweiter Stich gespiegelt;
+  // Finger zur Faust aus der Boxanimation, damit die Hände die Schwerter halten
   kira: {
-    run: { url: assassinUrl, file: "src/assets/models/Assassine.glb (Laufanimation)", fremd: true },
-    idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)", fremd: true },
-    // nur der Stich: Schlag 1 ab 0,20 s bis 1,30 s, Schlag 2 ab 0,15 s bis 1,00 s (champion_anim.py --von/--bis);
-    // Treffer = Klinge ganz vorne (Hand schnellt nach vorne)
-    attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 0.42 },
-    // zweiter Schlag: derselbe Stich mit dem rechten Arm
-    attack2: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (gespiegelt)", hit: 0.42, spiegeln: true },
-    death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)", fremd: true },
+    idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)" },
+    attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 0.42, fremd: true },
+    attack2: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (gespiegelt)", hit: 0.42, fremd: true, spiegeln: true },
+    death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)" },
+    fist: { url: assassinAttackUrl, file: "src/assets/models/Assassine_Attack.glb (Boxen, nur die Faust)" },
   },
   thorne: {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
@@ -212,6 +212,17 @@ function clipFromZero(clip: THREE.AnimationClip) {
 function hipsY(c: THREE.AnimationClip | null) {
   const t = c?.tracks.find((k) => k.name.endsWith("Hips.position"));
   return t ? Math.hypot(t.values[0], t.values[1], t.values[2]) : null;
+}
+
+/** Fingerspuren eines Clips durch die feste Fingerhaltung aus dem ersten Bild von `hand` ersetzen. */
+function holdFingers(clip: THREE.AnimationClip, hand: THREE.AnimationClip) {
+  const finger = (n: string) => /Hand(Thumb|Index|Middle|Ring|Pinky)\d/.test(n);
+  clip.tracks = clip.tracks.filter((t) => !finger(t.name));
+  for (const t of hand.tracks) {
+    if (!finger(t.name) || !t.name.endsWith(".quaternion")) continue;
+    const q = Array.from(t.values.slice(0, 4));
+    clip.tracks.push(new THREE.QuaternionKeyframeTrack(t.name, [0, clip.duration], [...q, ...q]));
+  }
 }
 
 /** Modell in das erste Bild eines Clips stellen. */
@@ -329,7 +340,64 @@ export type ChampRig = {
 };
 
 /** Lädt die 3D-Modelle der Champions; schlägt eines fehl, bleibt für ihn die gebaute Figur. */
+/**
+ * Waffen als eigene, starre Modelle an den Handknochen (verbiegen sich nicht mit der Haut).
+ * Die Geometrie liegt schon im Raum des Handknochens eines Mixamo-Skeletts (bodyCm = Körpergröße dieses Skeletts in
+ * Knocheneinheiten); sie wird auf die Körpergröße des Champions im Spiel umgerechnet. shift verschiebt entlang der
+ * Finger (+y), falls die Hand des Zielmodells länger ist.
+ */
+type PropSpec = { node: string; bone: string; bodyCm: number; shift: number };
+const CHAMP_PROPS: Record<string, PropSpec[]> = {
+  // Schwerter aus Kiras Meshy-Modell (dort mit den Händen verschmolzen, herausgeschnitten ab der Faust)
+  kira: [
+    { node: "SwordL", bone: "mixamorigLeftHand", bodyCm: 200, shift: 0 },
+    { node: "SwordR", bone: "mixamorigRightHand", bodyCm: 200, shift: 0 },
+  ],
+};
+/** Modelle der Waffen nach Knotenname */
+const propMeshes = new Map<string, { mesh: THREE.Mesh }>();
+let propEnv: THREE.Texture | null = null;
+
+async function loadProps() {
+  try {
+    const gltf = await loadGlbOffline(kiraSwordsUrl);
+    gltf.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      if (mat.map) mat.map.anisotropy = 4;
+      if (propEnv) mat.envMap = propEnv;
+      mat.envMapIntensity = 0.8;
+      propMeshes.set(m.name, { mesh: m });
+    });
+  } catch (err) {
+    console.error("Waffenmodelle konnten nicht geladen werden, Champions bleiben ohne:", err);
+  }
+}
+
+/** Waffen an die Handknochen des Modells hängen (height = Körpergröße im Spiel). */
+function attachProps(id: string, model: THREE.Object3D, height: number) {
+  const specs = CHAMP_PROPS[id];
+  if (!specs) return;
+  model.updateMatrixWorld(true);
+  const ws = new THREE.Vector3();
+  for (const sp of specs) {
+    const src = propMeshes.get(sp.node);
+    const bone = model.getObjectByName(sp.bone);
+    if (!src || !bone) continue;
+    const m = new THREE.Mesh(src.mesh.geometry, src.mesh.material);
+    m.name = sp.node;
+    m.castShadow = true;
+    bone.getWorldScale(ws);
+    const k = height / sp.bodyCm / ws.x;
+    m.scale.setScalar(k);
+    m.position.y = sp.shift;
+    bone.add(m);
+  }
+}
+
 export async function loadChampionModels() {
+  const props = loadProps();
   await Promise.all(
     Object.entries({ ...CHAMP_MODELS, ...MONSTER_MODELS }).map(async ([id, url]) => {
       if (rigAssets.has(id)) return;
@@ -338,29 +406,32 @@ export async function loadChampionModels() {
         const found = gltf.animations.find((a) => a.name === "Run") ?? gltf.animations[0];
         if (!found) throw new Error("keine Animation im Modell");
         const anims = CHAMP_ANIMS[id] ?? {};
-        const [run, idle, attack, attack2, death] = await Promise.all([
+        const [run, idle, attack, attack2, death, fist] = await Promise.all([
           loadExtraClip(anims.run, id, "Lauf"),
           loadExtraClip(anims.idle, id, "Steh"),
           loadExtraClip(anims.attack, id, "Schlag"),
           loadExtraClip(anims.attack2, id, "Zweite Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
+          loadExtraClip(anims.fist, id, "Faust"),
         ]);
         // Hüfthöhe fremder Animationen an dieses Modell anpassen (sonst sackt die Figur beim Wechsel zum Schlag ab)
-        const ownHips = hipsY(attack) ?? hipsY(clipFromZero(found));
-        for (const [c, src] of [[run, anims.run], [idle, anims.idle], [death, anims.death]] as const) if (c && src?.fremd && ownHips) scaleHips(c, ownHips);
+        const ownHips = hipsY(clipFromZero(found));
+        const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [death, anims.death]] as const;
+        for (const [c, src] of extras) if (c && src?.fremd && ownHips) scaleHips(c, ownHips);
         const clip = run ?? clipFromZero(found);
+        if (fist) for (const c of [clip, idle, attack, attack2]) if (c) holdFingers(c, fist);
         const hitFrac = [attack && anims.attack?.hit, attack2 && anims.attack2?.hit].flatMap((h, i) => (h ? [h / [attack, attack2][i]!.duration] : []));
         gltf.scene.updateMatrixWorld(true);
         // Höhe und Fußpunkt in der ersten Laufhaltung messen (mit Skelett verformt); die Grundform des Netzes kann bei
         // Mixamo-Modellen anders liegen als die Haltung im Spiel
         // (nur bei Laufanimation aus einem anderen Modell; die übrigen Modelle bleiben bei ihren abgestimmten Maßen)
         let box = new THREE.Box3().setFromObject(gltf.scene);
-        if (run) {
+        if (extras.some(([c, src]) => c && src?.fremd)) {
           const probe = cloneSkinned(gltf.scene);
-          box = new THREE.Box3().setFromObject(posed(probe, clip), true);
-          // Stehen und Schläge: Füße auf dieselbe Höhe wie beim Laufen bringen
+          if (run) box = new THREE.Box3().setFromObject(posed(probe, clip), true);
+          // fremde Animationen: Füße auf dieselbe Höhe wie beim Laufen bringen
           const ground = footY(posed(probe, clip));
-          for (const c of [idle, attack, attack2]) if (c) liftHips(probe, c, ground - footY(posed(probe, c)));
+          for (const [c, src] of extras) if (c && src?.fremd && c !== run && c !== death) liftHips(probe, c, ground - footY(posed(probe, c)));
         }
         let noUv = false;
         gltf.scene.traverse((o) => {
@@ -374,6 +445,7 @@ export async function loadChampionModels() {
       }
     }),
   );
+  await props;
 }
 
 /** Zeitpunkte im Laufzyklus, an denen die Füße am dichtesten beieinander sind: dort wirkt das Stehenbleiben ruhig. */
@@ -561,6 +633,8 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   // gleiche Höhe wie die gebaute Figur (Lebensleiste, Treffer), Füße auf dem Boden
   const { model, rig } = buildRig(asset, 2.6 * look.bulk * CHAMP_SIZE);
   if (asset.noUv) applyLookMaterials(model, look);
+  const id = [...rigAssets].find(([, a]) => a === asset)?.[0];
+  if (id) attachProps(id, model, 2.6 * look.bulk * CHAMP_SIZE);
   body.add(model);
   // leere Gliedmaßen-Gruppen: der bisherige Animationscode darf sie weiter drehen, ohne etwas zu verändern
   const limbs = [new THREE.Group(), new THREE.Group(), new THREE.Group(), new THREE.Group()];
@@ -2279,6 +2353,13 @@ export function setGuardianEnvironment(renderer: THREE.WebGLRenderer) {
   for (const m of guardian.materials) {
     m.envMap = env;
     m.envMapIntensity = 0.55;
+    m.needsUpdate = true;
+  }
+  // Metall der Waffen spiegelt dieselbe Umgebung
+  propEnv = env;
+  for (const { mesh } of propMeshes.values()) {
+    const m = mesh.material as THREE.MeshStandardMaterial;
+    m.envMap = env;
     m.needsUpdate = true;
   }
 }

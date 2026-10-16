@@ -150,15 +150,13 @@ python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.g
 
 ## Kiras Modell mit Schwertern
 
-Kira ist das Meshy-Modell mit den Schwertern in den Händen, in Mixamo geriggt. Weil Mixamo die mit den Händen
-verschmolzenen Klingen auf Unterarm und Finger verteilt (sie verbiegen sich), macht `assets-src/rigid_swords.py`
-Faust, Griff und Klinge starr: alles außerhalb des Handgelenks gehört zu 100 % dem Handknochen. Danach
-`champion_fbx.py` (Modell `Kira.glb`) und `champion_anim.py --treffer` (`Kira_Attack1.glb`, `Kira_Attack2.glb`).
-Vom Schwertschlag ist nur der Stich übrig (`--von`/`--bis`), Treffer = Klinge ganz vorne. Der zweite Schlag ist derselbe
-Stich gespiegelt (rechter Arm, `spiegeln` in `CHAMP_ANIMS`); sie wechseln sich ab,
-der zweite wird so gedehnt, dass sein Treffer auf den Schadensmoment fällt. Fremde Animationen bekommen die Hüft-
-und Fußhöhe dieses Modells (sonst sackt die Figur beim Wechsel zum Schlag ab).
-Laufen, Stehen und Sterben kommen vom früheren Kira-Modell (gleiches Mixamo-Skelett).
+Kira ist das Mixamo-Modell (`Assassine.glb`). Die Schwerter in ihren Händen stammen aus dem Meshy-Modell mit den
+Schwertern in der Hand: dort sind sie mit den Händen verschmolzen, `assets-src/rigid_swords.py` hat Faust und Klinge
+starr an den Handknochen gehängt, und alles ab der Faust (Parierstange und Klinge) wurde im Raum des Handknochens
+herausgeschnitten (`src/assets/kira_swords.glb`). Im Spiel hängen sie an Kiras Handknochen (`CHAMP_PROPS`) und biegen
+sich nie. Die Stiche kommen vom Meshy-Modell (gleiches Mixamo-Skelett, nur der Stich, `--von`/`--bis`), der zweite ist
+derselbe Stich gespiegelt; die Finger halten die Faust aus der Boxanimation. Fremde Animationen bekommen die Hüft- und
+Fußhöhe dieses Modells.
 
 ## 3D-Modell der Inhibitoren
 
