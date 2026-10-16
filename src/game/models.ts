@@ -18,7 +18,6 @@ import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
 import assassinIdleUrl from "../assets/models/Assassine_Idle.glb";
 import kiraUrl from "../assets/models/Kira.glb";
 import kiraAttack1Url from "../assets/models/Kira_Attack1.glb";
-import kiraAttack2Url from "../assets/models/Kira_Attack2.glb";
 import tankUrl from "../assets/models/Tank.glb";
 import tankIdleUrl from "../assets/models/Tank_Idle.glb";
 import tankAttackUrl from "../assets/models/Tank_Attack.glb";
@@ -145,7 +144,8 @@ const CHAMP_MODELS: Record<string, string> = { kira: kiraUrl, thorne: tankUrl };
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
 /** fremd: Animation eines anderen Modells mit gleichem Skelett; ihre Hüfthöhe wird an dieses Modell angepasst. */
-type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean };
+/** spiegeln: Animation seitenverkehrt abspielen (linke und rechte Knochen getauscht, z. B. derselbe Stich mit dem anderen Arm). */
+type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean };
 const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
   // Kira: Modell mit den Schwertern in den Händen (Mixamo, Klingen starr am Handknochen, assets-src/rigid_swords.py);
   // Laufen, Stehen und Sterben vom früheren Kira-Modell mit gleichem Mixamo-Skelett
@@ -155,7 +155,8 @@ const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: Anim
     // nur der Stich: Schlag 1 ab 0,20 s bis 1,30 s, Schlag 2 ab 0,15 s bis 1,00 s (champion_anim.py --von/--bis);
     // Treffer = Klinge ganz vorne (Hand schnellt nach vorne)
     attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 0.42 },
-    attack2: { url: kiraAttack2Url, file: "src/assets/models/Kira_Attack2.glb (aus SchwertSchlagAnimation2.fbx)", hit: 0.27 },
+    // zweiter Schlag: derselbe Stich mit dem rechten Arm
+    attack2: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (gespiegelt)", hit: 0.42, spiegeln: true },
     death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)", fremd: true },
   },
   thorne: {
@@ -256,13 +257,36 @@ function scaleHips(c: THREE.AnimationClip, y: number) {
   if (t && y0 > 0) for (let i = 0; i < t.values.length; i++) t.values[i] *= y / y0;
 }
 
+/**
+ * Seitenverkehrte Animation (Mixamo-Skelett): Spuren von Left- und Right-Knochen tauschen, Drehungen an der
+ * Mittelebene spiegeln (Quaternion x, -y, -z, w) und Verschiebungen seitlich umkehren.
+ */
+function mirrorClip(clip: THREE.AnimationClip) {
+  const swap = (n: string) => n.replace(/(Left|Right)/, (m) => (m === "Left" ? "Right" : "Left"));
+  const tracks = clip.tracks.map((t) => {
+    const c = t.clone();
+    c.name = swap(t.name);
+    const v = c.values;
+    if (t.name.endsWith(".quaternion")) {
+      for (let i = 0; i < v.length; i += 4) {
+        v[i + 1] = -v[i + 1];
+        v[i + 2] = -v[i + 2];
+      }
+    } else if (t.name.endsWith(".position")) {
+      for (let i = 0; i < v.length; i += 3) v[i] = -v[i];
+    }
+    return c;
+  });
+  return new THREE.AnimationClip(`${clip.name}_gespiegelt`, clip.duration, tracks);
+}
+
 async function loadExtraClip(src: AnimSrc | undefined, id: string, what: string) {
   if (!src) return null;
   try {
     const gltf = await loadGlbOffline(src.url);
     const clip = gltf.animations[0];
     if (!clip) throw new Error("keine Animation in der Datei");
-    return clipFromZero(clip);
+    return src.spiegeln ? mirrorClip(clipFromZero(clip)) : clipFromZero(clip);
   } catch (err) {
     console.error(`${what}-Animation für Champion ${id} konnte nicht geladen werden: ${src.file}`, err);
     return null;

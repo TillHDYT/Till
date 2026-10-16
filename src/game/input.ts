@@ -473,7 +473,8 @@ export class Input {
       const gy = w.grid.groundAt(u.x, u.z);
       const foot = this.view.project(this.camera, u.x, gy, u.z, W, H);
       const head = this.view.project(this.camera, u.x, gy + u.height, u.z, W, H);
-      if (!foot.on && !head.on) continue;
+      // nur Einheiten, die wirklich im Bild sind (Fuß und Kopf vor der Kamera und auf dem Bildschirm)
+      if (!foot.on || !head.on) continue;
       const mid = this.view.project(this.camera, u.x, gy + u.height * 0.5, u.z, W, H);
       const side = this.view.project(this.camera, u.x + u.radius, gy + u.height * 0.5, u.z, W, H);
       const reach = Math.max(base, Math.hypot(side.x - mid.x, side.z - mid.z));

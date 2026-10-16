@@ -893,7 +893,9 @@ export class View {
   /** Bildschirmposition (Pixel) eines Weltpunkts. */
   project(camera: THREE.Camera, x: number, y: number, z: number, w: number, h: number): V2 & { on: boolean } {
     this.tmpP.set(x, y, z).project(camera);
-    return { x: (this.tmpP.x * 0.5 + 0.5) * w, z: (-this.tmpP.y * 0.5 + 0.5) * h, on: this.tmpP.z < 1 };
+    // on: im Sichtbereich der Kamera (Punkte hinter der Kamera landen sonst gespiegelt irgendwo auf dem Bildschirm)
+    const p = this.tmpP;
+    return { x: (p.x * 0.5 + 0.5) * w, z: (-p.y * 0.5 + 0.5) * h, on: p.z > -1 && p.z < 1 && Math.abs(p.x) < 1.2 && Math.abs(p.y) < 1.2 };
   }
 
   isUnitShown(u: Unit) {
