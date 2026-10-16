@@ -128,13 +128,14 @@ export class View {
       applyCameraCut(model.root);
       scene.add(model.root);
       this.structs.set(s.id, { model, unit: s, lastAtk: 0, beam: null, halo: null });
-      // Feuerschalen links und rechts der Inhibitoren
+      // Feuerschalen links und rechts der Inhibitoren (beim 3D-Modell weiter außen, der Steinring ist breiter)
       if (s.kind === "inhib") {
         const c = Math.cos(s.facing);
         const sn = Math.sin(s.facing);
+        const sx = model.sideX ?? 4.4;
         for (const side of [-1, 1]) {
-          const bx = s.x + c * 4.4 * side - sn * 1.2;
-          const bz = s.z - sn * 4.4 * side - c * 1.2;
+          const bx = s.x + c * sx * side - sn * 1.2;
+          const bz = s.z - sn * sx * side - c * 1.2;
           const b = buildBrazier();
           b.root.position.set(bx, world.grid.groundAt(bx, bz), bz);
           applyCameraCut(b.root);
@@ -473,7 +474,7 @@ export class View {
       const atk = s.anim.atk;
       const bob = Math.sin(this.time * 1.6 + s.id) * (s.kind === "turret" ? 0.1 : 0.2);
       m.crystal.position.y = m.crystalY + bob;
-      m.crystal.rotation.y += dt * (s.kind === "nexus" ? 0.5 : s.kind === "inhib" ? 0.6 : 1.4);
+      m.crystal.rotation.y += dt * (m.spin ?? (s.kind === "nexus" ? 0.5 : s.kind === "inhib" ? 0.6 : 1.4));
       if (m.shards) m.shards.rotation.y -= dt * 0.9;
 
       if (s.kind === "turret") {
@@ -525,9 +526,11 @@ export class View {
         const base = s.kind === "inhib" ? 7 : 11;
         m.glow.scale.setScalar(base * pulse * (s.invulnerable ? 0.85 : 1));
         if (s.kind === "inhib" && Math.random() < 0.12 && this.seenAt(s.x, s.z)) {
+          // Funken steigen um den Kristall auf (beim 3D-Modell aus dem Spalt zwischen Säule und Ring)
+          const [r0, r1] = m.fxR ?? [0.6, 1.8];
           const a = Math.random() * Math.PI * 2;
-          const r = 0.6 + Math.random() * 1.2;
-          const y = g.groundAt(s.x, s.z) + 1.2;
+          const r = r0 + Math.random() * (r1 - r0);
+          const y = g.groundAt(s.x, s.z) + (m.fxY ?? 1.2);
           this.particles.emit(s.x + Math.cos(a) * r, y, s.z + Math.sin(a) * r, 0, 1.6 + Math.random(), 0, new THREE.Color(TEAM_GLOW[team]), 0.4, 1.4, 0);
         }
       }

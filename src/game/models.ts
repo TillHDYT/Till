@@ -11,6 +11,7 @@ import emblemUrl from "../assets/emblem.jpg";
 import guardianUrl from "../assets/guardian.glb";
 import guardianBlueUrl from "../assets/guardian_blue.jpg";
 import nexusUrl from "../assets/nexus.glb";
+import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
 import assassinDeathUrl from "../assets/models/Assassine_Death.glb";
@@ -817,6 +818,13 @@ export type StructModel = {
   staff?: THREE.Object3D;
   outline?: THREE.Mesh;
   shards?: THREE.Object3D;
+  /** Inhibitor: Höhe und Abstand vom Mittelpunkt, in dem die aufsteigenden Funken entstehen (sonst 1.2 und 0.6–1.8) */
+  fxY?: number;
+  fxR?: [number, number];
+  /** Inhibitor: seitlicher Abstand der Feuerschalen (sonst 4.4) */
+  sideX?: number;
+  /** Drehgeschwindigkeit des Kristalls in rad/s (sonst je Gebäudeart) */
+  spin?: number;
 };
 
 /** Facettierter, leuchtender Edelstein. */
@@ -912,7 +920,7 @@ function silhouetteOutline(geo: THREE.BufferGeometry, color: number, width: numb
       .replace("#include <begin_vertex>", `vec3 transformed = vec3(position) + smoothNormal * ${width.toFixed(3)};`);
   };
   mat.customProgramCacheKey = () => `silhouette${width}`;
-  // eigener Stencil-Wert je Gebäudeart: Nexus (2) und Türme (1) schneiden sich gegenseitig keine Lücken in den Umriss
+  // eigener Stencil-Wert je Gebäudeart: Türme (1), Nexus (2) und Inhibitoren (3) schneiden sich gegenseitig keine Lücken in den Umriss
   const m = new THREE.Mesh(geo, mat);
   m.renderOrder = 2;
   m.visible = false;
@@ -1095,7 +1103,211 @@ function roundBase(r: number, parts: THREE.BufferGeometry[]) {
   }
 }
 
+// ---------------- Inhibitor aus dem 3D-Modell (assets-src/inhibitor.md -> inhibitor.glb) ----------------
+
+type InhibAsset = {
+  base: THREE.Mesh;
+  crystal: THREE.Mesh;
+  /** Steinring je Team (blau = Originaltextur, rot = umgefärbt) */
+  materials: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+  /** Säule je Team: gleiche Textur, der Kristall leuchtet leicht in Teamfarbe */
+  gems: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+  /** abgedunkelte Säule für den Stumpf nach der Zerstörung */
+  deadMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+  /** Ring mit geglätteten Normalen für den Umriss */
+  outlineGeo: THREE.BufferGeometry;
+  /** unterer Teil der Säule bis knapp über den Ring (gleiche Punkte, weniger Dreiecke) */
+  stumpGeo: THREE.BufferGeometry;
+  /** Bruchfläche, Splitter auf dem Stumpf und auf dem Rand, je Team (Vertexfarben) */
+  rubbleGeo: [THREE.BufferGeometry, THREE.BufferGeometry];
+  ringTop: number;
+  crystalTop: number;
+  /** halbe Breite der Säule (ohne die Klammerspitzen) */
+  pillarR: number;
+};
+const INHIB_STENCIL = 3;
+let inhibAsset: InhibAsset | null = null;
+
+/** Lädt das Inhibitor-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Inhibitor. */
+export async function loadInhibitor(): Promise<boolean> {
+  if (inhibAsset) return true;
+  try {
+    const gltf = await loadGlbOffline(inhibitorUrl);
+    const base = gltf.scene.getObjectByName("Inhibitor") as THREE.Mesh | undefined;
+    const crystal = gltf.scene.getObjectByName("Crystal") as THREE.Mesh | undefined;
+    if (!base?.isMesh || !crystal?.isMesh) throw new Error("GLB benötigt die Meshes Inhibitor und Crystal");
+    const blue = (Array.isArray(base.material) ? base.material[0] : base.material) as THREE.MeshStandardMaterial | undefined;
+    if (!blue?.isMeshStandardMaterial) throw new Error("Inhibitor-Modell besitzt kein PBR-Material");
+    if (blue.map) blue.map.anisotropy = 4;
+    // reiner Stein und Kristall: kein Metall, die gebackene Rauheit bleibt
+    blue.metalness = 0;
+    blue.metalnessMap = null;
+    // Das Modell ist blau. Für das rote Team den Kristall rot und den blaustichigen Schiefer grau färben.
+    const red = blue.clone();
+    try {
+      if (blue.map) red.map = withImage(blue.map, recolorInhibitorRed(blue.map.image as CanvasImageSource & { width: number; height: number }));
+    } catch (err) {
+      console.warn("Umfärben des Inhibitors nicht möglich, roter Inhibitor bleibt blau:", err);
+    }
+    const materials: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] = [blue, red];
+    const teamMats = (f: (m: THREE.MeshStandardMaterial, team: 0 | 1) => void) =>
+      materials.map((m, team) => {
+        const c = m.clone();
+        f(c, team as 0 | 1);
+        return c;
+      }) as [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial];
+    // Leuchten über die Textur: der helle Kristall glimmt in Teamfarbe, dunkler Schiefer und Messing kaum
+    const gems = teamMats((m, team) => {
+      m.emissive.setHex(TEAM_GLOW[team]);
+      m.emissiveMap = m.map;
+      m.emissiveIntensity = 0.45;
+    });
+    // erloschener Stumpf: dunkler, von oben sieht man in die Bruchstelle
+    const deadMats = teamMats((m) => {
+      m.color.setHex(0x6a676e);
+      m.side = THREE.DoubleSide;
+    });
+    for (const m of [...materials, ...gems]) markSilhouette(m, INHIB_STENCIL);
+
+    // Maße aus dem Modell: Ringoberkante, Kristallspitze, Breite der Säule
+    base.geometry.computeBoundingBox();
+    crystal.geometry.computeBoundingBox();
+    const bb = base.geometry.boundingBox!;
+    const cb = crystal.geometry.boundingBox!;
+    const ringTop = Number.isFinite(bb.max.y) ? bb.max.y : 3.2;
+    const crystalTop = Number.isFinite(cb.max.y) ? crystal.position.y + cb.max.y : 5.6;
+    const pillarR = Number.isFinite(cb.max.x) ? Math.max(-cb.min.x, cb.max.x, -cb.min.z, cb.max.z) : 1.35;
+    const cutY = ringTop + 0.25;
+    const stumpGeo = trianglesBelow(crystal.geometry, cutY - crystal.position.y);
+    const rubbleGeo = ([0, 1] as const).map((team) => inhibRubble(team, base.geometry, crystal.position, cutY, pillarR)) as [THREE.BufferGeometry, THREE.BufferGeometry];
+    inhibAsset = { base, crystal, materials, gems, deadMats, outlineGeo: smoothOutlineGeometry(base.geometry), stumpGeo, rubbleGeo, ringTop, crystalTop, pillarR };
+    return true;
+  } catch (err) {
+    console.error("Inhibitor-GLB konnte nicht geladen werden, nutze Ersatzmodell:", err);
+    return false;
+  }
+}
+
+/** Nur die Dreiecke unterhalb von maxY (Attribute werden geteilt, nur der Index ist neu). */
+function trianglesBelow(geo: THREE.BufferGeometry, maxY: number) {
+  const pos = geo.getAttribute("position");
+  const idx = geo.getIndex();
+  const n = idx ? idx.count : pos.count;
+  const keep: number[] = [];
+  for (let i = 0; i < n; i += 3) {
+    const a = idx ? idx.getX(i) : i;
+    const b = idx ? idx.getX(i + 1) : i + 1;
+    const c = idx ? idx.getX(i + 2) : i + 2;
+    if (Math.max(pos.getY(a), pos.getY(b), pos.getY(c)) < maxY) keep.push(a, b, c);
+  }
+  const g = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(geo.attributes)) g.setAttribute(name, attr);
+  g.setIndex(keep);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Höchster Punkt des Rings um (x, z), für Splitter, die auf dem Rand liegen. */
+function topAt(geo: THREE.BufferGeometry, x: number, z: number, r: number, fallback: number) {
+  const pos = geo.getAttribute("position");
+  let top = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const dx = pos.getX(i) - x;
+    const dz = pos.getZ(i) - z;
+    if (dx * dx + dz * dz < r * r) top = Math.max(top, pos.getY(i));
+  }
+  return Number.isFinite(top) ? top : fallback;
+}
+
+/** Trümmer im Ring: dunkle Bruchfläche auf dem Stumpf, gezackte Kristallreste darauf und zwei Splitter auf dem Rand. */
+function inhibRubble(team: 0 | 1, ring: THREE.BufferGeometry, pivot: THREE.Vector3, cutY: number, pillarR: number) {
+  const dead = team === 0 ? 0x34405a : 0x5a3434;
+  const dark = 0x3d3842;
+  const { x, z } = pivot;
+  // unebene Bruchfläche (flach gedrückter, leicht schiefer Klumpen statt glattem Deckel)
+  const parts = [colored(new THREE.DodecahedronGeometry(pillarR * 0.62, 0), dark, mat4(x, cutY - 0.05, z, 1, 0.3, 1, 0.12, 0.4, -0.08))];
+  // abgebrochene Spitzen, nach außen gekippt
+  for (const [a, d, h, tilt] of [
+    [0.3, 0.15, 0.75, 0.12],
+    [1.6, 0.5, 0.45, 0.4],
+    [2.7, 0.45, 0.6, 0.32],
+    [3.9, 0.42, 0.65, 0.3],
+    [5.2, 0.5, 0.4, 0.45],
+  ] as const) {
+    const s = pillarR * 0.27;
+    parts.push(colored(prism(s, h, 5, 0.5, 0.1), a > 3 ? dark : dead, mat4(x + Math.sin(a) * d, cutY + h * 0.35, z + Math.cos(a) * d, 1, 1, 1, Math.cos(a) * tilt, 0, -Math.sin(a) * tilt)));
+  }
+  // umgestürzte Splitter, die längs auf dem Rand liegen (hinten links und rechts, wo der Ring flach ist)
+  for (const [a, rr, len] of [
+    [2.3, 2.75, 1.0],
+    [-1.95, 2.7, 0.8],
+  ] as const) {
+    const sx = Math.sin(a) * rr;
+    const sz = Math.cos(a) * rr;
+    const y = topAt(ring, sx, sz, 0.4, cutY - 0.9);
+    parts.push(colored(prism(0.26, len, 5, 0.5, 0.2), a > 0 ? dead : dark, mat4(sx, y + 0.16, sz, 1, 1, 1, 0.12, a + Math.PI - 0.3, Math.PI / 2 - 0.1)));
+  }
+  return merge(parts);
+}
+
+/** Inhibitor aus dem Modell: offener Steinring, die Kristallsäule mit Klammerkäfig schwebt, dreht sich und leuchtet. */
+function buildInhibitorModel(team: 0 | 1, a: InhibAsset): StructModel {
+  const root = new THREE.Group();
+  const base = new THREE.Mesh(a.base.geometry, a.materials[team]);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  root.add(base);
+  const top = new THREE.Group();
+  root.add(top);
+  const crystal = new THREE.Group();
+  crystal.position.copy(a.crystal.position);
+  const gem = new THREE.Mesh(a.crystal.geometry, a.gems[team]);
+  gem.castShadow = true;
+  crystal.add(gem);
+  top.add(crystal);
+  const glow = glowSprite(TEAM_GLOW[team], 7, 0.75);
+  glow.position.set(a.crystal.position.x, (a.ringTop + a.crystalTop) / 2, a.crystal.position.z);
+  top.add(glow);
+  // leuchtendes Becken im Ring um den Fuß der Säule, knapp unter dem niedrigen hinteren Rand
+  const pool = new THREE.Mesh(
+    new THREE.CircleGeometry(a.pillarR + 1, 40),
+    new THREE.MeshBasicMaterial({ color: TEAM_GLOW[team], transparent: true, opacity: 0.45, depthWrite: false }),
+  );
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(a.crystal.position.x, a.ringTop * 0.62, a.crystal.position.z);
+  top.add(pool);
+  // Trümmer: erloschener Stumpf mit Bruchfläche und Splittern, ragt über den Rand
+  const rubble = new THREE.Group();
+  const stump = new THREE.Mesh(a.stumpGeo, a.deadMats[team]);
+  stump.position.copy(a.crystal.position);
+  stump.rotation.y = 0.7;
+  const shards = new THREE.Mesh(a.rubbleGeo[team], statueMat());
+  stump.castShadow = shards.castShadow = true;
+  rubble.add(stump, shards);
+  rubble.visible = false;
+  root.add(rubble);
+  const outline = silhouetteOutline(a.outlineGeo, 0xff2a1a, 0.08, INHIB_STENCIL);
+  root.add(outline);
+  return {
+    root,
+    crystal,
+    glow,
+    top,
+    rubble,
+    crystalY: crystal.position.y,
+    outline,
+    // Funken steigen aus dem Spalt zwischen Säule und Ring auf
+    fxY: a.ringTop * 0.8,
+    fxR: [a.pillarR + 0.15, a.pillarR + 0.7],
+    // Feuerschalen außerhalb des breiten Rings (Rand seitlich bis etwa 3.7)
+    sideX: 5.4,
+    // die große, gemusterte Säule dreht sich ruhiger als die gebauten Kristalle
+    spin: 0.35,
+  };
+}
+
 export function buildInhibitor(team: 0 | 1): StructModel {
+  if (inhibAsset) return buildInhibitorModel(team, inhibAsset);
   const root = new THREE.Group();
   const mat = statueMat();
   const gem = gemMat(team, 0.94);
@@ -1565,6 +1777,53 @@ function recolorBlueToRed(img: CanvasImageSource & { width: number; height: numb
     p[i] = r + (Math.min(255, mx * 1.02) - r) * k;
     p[i + 1] = gr + (Math.min(r, gr) * 0.45 + r * 0.15 - gr) * k;
     p[i + 2] = b + (r * 0.55 + Math.min(r, b) * 0.2 - b) * k;
+  }
+  g.putImageData(data, 0, 0);
+  return c;
+}
+
+/**
+ * Rote Inhibitor-Textur: der himmelblaue Kristall wird rot (Helligkeit und helle Risse bleiben), der blaustichige
+ * Schiefer der Klammern und Innenwände warmgrau statt rot; Messing, Moos und neutraler Stein bleiben, wie sie sind.
+ * recolorBlueToRed würde auch den Schiefer kräftig rot färben, weil dessen Blauanteil schon für die volle Stärke reicht.
+ */
+function recolorInhibitorRed(img: CanvasImageSource & { width: number; height: number }): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) throw new Error("Kein 2D-Kontext");
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  const step = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  for (let i = 0; i < p.length; i += 4) {
+    const r = p[i];
+    const gr = p[i + 1];
+    const b = p[i + 2];
+    const mx = Math.max(r, gr, b);
+    const d = mx - Math.min(r, gr, b);
+    if (d < 8) continue;
+    const sat = d / mx;
+    const hue = mx === r ? (((gr - b) / d + 6) % 6) * 60 : mx === gr ? ((b - r) / d + 2) * 60 : ((r - gr) / d + 4) * 60;
+    // Blauton (Kristall um 206°, Schiefer um 203°), weich ausgeblendet; fast graue Farben bleiben
+    const blue = step(160, 180, hue) * (1 - step(235, 255, hue)) * step(0.1, 0.22, sat);
+    if (blue <= 0) continue;
+    // Kristall = hell und kräftig, Schiefer = matt und dunkler (dazwischen weich überblendet)
+    const kc = blue * step(0.84, 1, mx / 255 + 0.6 * sat);
+    const ks = blue - kc;
+    // Kristall: gleicher Hellwert, Farbton um 2°, etwas kräftiger (die hellen Risse bleiben sichtbar)
+    const s2 = Math.min(1, sat * 1.06);
+    const cg = mx * (1 - s2 * 0.97);
+    const cb = mx * (1 - s2);
+    // Schiefer: Helligkeit behalten, leicht warmes Grau
+    const l = r * 0.3 + gr * 0.59 + b * 0.11;
+    p[i] = r + (mx - r) * kc + (Math.min(255, l * 1.04) - r) * ks;
+    p[i + 1] = gr + (cg - gr) * kc + (l - gr) * ks;
+    p[i + 2] = b + (cb - b) * kc + (l * 0.94 - b) * ks;
   }
   g.putImageData(data, 0, 0);
   return c;

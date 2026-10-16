@@ -148,7 +148,22 @@ Mesh-Inseln in der Mitte) als eigenes Teil `Crystal` ab, glättet die Normalen u
 python assets-src/nexus.py nexus_tripo.glb build/nexus && cp build/nexus/nexus.glb src/assets/
 ```
 
-Beide Modelle werden ohne Netzwerkzugriff geladen (eingebettete Datei selbst dekodiert, Texturen als
+## 3D-Modell der Inhibitoren
+
+Die Inhibitoren sind das Modell aus `Inhibitor 1.0.zip` (Meshy-Stil, handbemalt, 902.000 Dreiecke): blaue
+Kristallsäule mit Schiefer-/Messingkäfig in einem offenen Steinring, vorne Geröll und Kettenklammern.
+Aufbereitet (Rezept in `assets-src/inhibitor.md`) auf ca. 36.000 Dreiecke mit neu gebackener 2K-Textur
+(`src/assets/inhibitor.glb`): Maßstab 4, Ringboden auf Höhe 0, vorne = +z (zeigt zur Kartenmitte). Zwei Teile:
+`Inhibitor` (Ring, Radius 3,3–4,0) und `Crystal` (ganze Säule samt Käfig, Höhe bis 5,6); ein im Kristall
+verstecktes Innenteil ist entfernt.
+
+Im Spiel schwebt und dreht sich die Säule und glimmt in Teamfarbe, im Ring leuchtet ein Becken. Für das rote
+Team färbt `recolorInhibitorRed` die Textur beim Laden um (Kristall rot, blaustichiger Schiefer warmgrau,
+Messing und Stein bleiben). Zerstört bleibt ein erloschener Stumpf mit Splittern im Ring stehen. Der
+Kollisionsradius ist 3,0, die Feuerschalen stehen weiter außen. Lädt das GLB nicht, kommt der gebaute
+Ersatz-Inhibitor (`buildInhibitor`).
+
+Alle Modelle werden ohne Netzwerkzugriff geladen (eingebettete Datei selbst dekodiert, Texturen als
 data:-Bilder), damit sie auch in abgeschotteten Vorschauen wie der Claude-App erscheinen.
 
 ## Kamera und Steuerung (PC)

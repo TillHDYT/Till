@@ -337,7 +337,8 @@ export class Structure extends Unit {
       Object.assign(base, { maxHp: hp, ad: 165, as: 0.85, range: 11.5, armor: 45, mr: 45 });
     } else if (kind === "inhib") {
       Object.assign(base, { maxHp: 2600, armor: 20, mr: 20 });
-      r = 2.3;
+      // Steinring des 3D-Modells hat Radius 3.2-3.6; jeder Inhibitor hat mindestens 7.25 Platz bis zur nächsten Wand, die Wege bleiben frei
+      r = 3.0;
     } else {
       Object.assign(base, { maxHp: 4600, armor: 20, mr: 20, hpReg: 4 });
       r = 3.6;
@@ -345,7 +346,8 @@ export class Structure extends Unit {
     super(kind, team, pos.x, pos.z, r, base);
     this.lane = lane;
     this.tier = tier;
-    this.height = kind === "turret" ? 10.4 : kind === "inhib" ? 5.6 : 7.5;
+    // Inhibitor: Kristallspitze bei 5.6, schwebt bis 0.2 höher; die Lebensleiste sitzt darüber
+    this.height = kind === "turret" ? 10.4 : kind === "inhib" ? 6.2 : 7.5;
   }
 }
 
