@@ -1759,7 +1759,7 @@ export function addStartBaseFires(fountain: THREE.Object3D) {
 
 // ---------------- Nexus aus dem 3D-Modell (assets-src/nexus.py -> nexus.glb) ----------------
 
-type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry };
+type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.BufferGeometry; materials: [THREE.Material, THREE.Material] };
 const NEXUS_STENCIL = 2;
 let nexusAsset: NexusAsset | null = null;
 
@@ -1773,8 +1773,16 @@ export async function loadNexus(): Promise<boolean> {
     if (!base?.isMesh || !crystal?.isMesh) throw new Error("GLB benötigt die Meshes Nexus und Crystal");
     const mat = (Array.isArray(base.material) ? base.material[0] : base.material) as THREE.MeshStandardMaterial;
     if (mat.map) mat.map.anisotropy = 4;
+    // Sockel mit blauen Kristallen: für das rote Team rot färben (wie beim Inhibitor)
+    const red = mat.clone();
+    try {
+      if (mat.map) red.map = withImage(mat.map, recolorInhibitorRed(mat.map.image as CanvasImageSource & { width: number; height: number }));
+    } catch (err) {
+      console.warn("Umfärben des Nexus nicht möglich, roter Nexus bleibt blau:", err);
+    }
     markSilhouette(mat, NEXUS_STENCIL);
-    nexusAsset = { base, crystal, outlineGeo: smoothOutlineGeometry(base.geometry) };
+    markSilhouette(red, NEXUS_STENCIL);
+    nexusAsset = { base, crystal, outlineGeo: smoothOutlineGeometry(base.geometry), materials: [mat, red] };
     return true;
   } catch (err) {
     console.error("Nexus-GLB konnte nicht geladen werden, nutze Ersatzmodell:", err);
@@ -1785,7 +1793,7 @@ export async function loadNexus(): Promise<boolean> {
 /** Nexus aus dem Modell: Sockel mit Krallen, Kristall in Teamfarbe dreht sich und leuchtet. */
 function buildNexusModel(team: 0 | 1, asset: NexusAsset): StructModel {
   const root = new THREE.Group();
-  const base = new THREE.Mesh(asset.base.geometry, asset.base.material);
+  const base = new THREE.Mesh(asset.base.geometry, asset.materials[team]);
   base.castShadow = true;
   base.receiveShadow = true;
   root.add(base);

@@ -1,7 +1,7 @@
-# Bereitet das Tripo-Modell (roter Kristall auf verziertem Sockel) als Nexus für das Spiel auf:
-#   python nexus.py <eingabe.glb> <ausgabe-ordner>
-# - Sockelboden auf y=0, Außenradius 4.8 wie der bisherige Nexus
-# - roter Kristall als eigenes Teil "Crystal" (leuchtet im Spiel in Teamfarbe und dreht sich)
+# Bereitet das Meshy-Modell „crystal fountain“ (Stein, Gold, blaue Kristalle) als Nexus für das Spiel auf:
+#   python nexus.py <eingabe.fbx|glb> <ausgabe-ordner>
+# - Sockelboden auf y=0, Außenradius 6.5: füllt den runden Sockel des Nexus im Basisboden (assets-src/base-floor)
+# - großer blauer Mittelkristall als eigenes Teil "Crystal" (leuchtet im Spiel in Teamfarbe und dreht sich)
 # - weiche Normalen (das Original hat keine), Material ohne Metall (Licht ist in die Textur gemalt)
 # - Textur als JPEG (2K)
 # Ausgabe: nexus.glb und info.json
@@ -16,11 +16,14 @@ import numpy as np
 from mathutils import Vector
 
 SRC, OUT = sys.argv[-2], sys.argv[-1]
-BASE_R = 4.8
+BASE_R = 6.5
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
-bpy.ops.import_scene.gltf(filepath=SRC)
+if SRC.lower().endswith(".fbx"):
+    bpy.ops.import_scene.fbx(filepath=SRC)
+else:
+    bpy.ops.import_scene.gltf(filepath=SRC)
 base = next(o for o in bpy.context.scene.objects if o.type == "MESH")
 bpy.ops.object.select_all(action="DESELECT")
 base.select_set(True)
@@ -45,8 +48,8 @@ me.vertices.foreach_set("co", co.ravel())
 me.update()
 print("scale", round(float(k), 3), "height", round(float(co[:, 2].max()), 3))
 
-# Kristall finden: das Modell besteht aus vielen getrennten Teilen (Inseln); die Kristallteile sind fast
-# vollständig rot und liegen in der Mitte. Farbe je Fläche aus der Textur in der Flächenmitte.
+# Kristall finden: das Modell besteht aus vielen getrennten Teilen (Inseln); die Teile des Mittelkristalls sind
+# fast vollständig blau, liegen in der Mitte und reichen weit nach oben. Farbe je Fläche aus der Textur in der Flächenmitte.
 mat = me.materials[0]
 bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
 img = bsdf.inputs["Base Color"].links[0].from_node.image
@@ -77,17 +80,20 @@ islands = {}
 for f in bm.faces:
     islands.setdefault(find(f.verts[0].index), []).append(f)
 crystal_faces = set()
+# Mittelteil = Insel mit dem kleinsten Radius; darin die blauen Flächen ab 60 % der Höhe
+height = co[:, 2].max()
+best = None
 for faces in islands.values():
-    reds = 0
-    for f in faces:
-        u = sum(l[uvl].uv.x for l in f.loops) / len(f.loops)
-        v = sum(l[uvl].uv.y for l in f.loops) / len(f.loops)
-        r, g, b_ = px[min(H - 1, int((v % 1) * H)), min(W - 1, int((u % 1) * W)), :3]
-        reds += r > g * 1.4 and r > b_ * 1.4
     pts = np.array([v.co[:] for f in faces for v in f.verts])
-    mid = (pts.min(0) + pts.max(0)) / 2
-    if reds / len(faces) > 0.6 and math.hypot(mid[0], mid[1]) < BASE_R * 0.5 and pts[:, 2].max() > co[:, 2].max() * 0.4:
-        crystal_faces.update(f.index for f in faces)
+    rmax = float(np.max(np.hypot(pts[:, 0], pts[:, 1])))
+    if best is None or rmax < best[0]:
+        best = (rmax, faces)
+for f in best[1]:
+    u = sum(l[uvl].uv.x for l in f.loops) / len(f.loops)
+    v = sum(l[uvl].uv.y for l in f.loops) / len(f.loops)
+    r, g, b_ = px[min(H - 1, int((v % 1) * H)), min(W - 1, int((u % 1) * W)), :3]
+    if b_ > r * 1.5 and b_ > g * 1.05 and f.calc_center_median().z > height * 0.6:
+        crystal_faces.add(f.index)
 print("crystal faces", len(crystal_faces), "of", len(bm.faces))
 for f in bm.faces:
     f.select = f.index in crystal_faces
