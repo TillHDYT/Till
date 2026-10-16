@@ -773,10 +773,13 @@ export class View {
         v.meteor.position.set(a.x - 6 * (1 - k), y + 18 * (1 - k), a.z + 4 * (1 - k));
         if (show && Math.random() < 0.9) this.particles.emit(v.meteor.position.x, v.meteor.position.y, v.meteor.position.z, (Math.random() - 0.5) * 2, 1, (Math.random() - 0.5) * 2, new THREE.Color(0xff6a10), 1.5, 0.5, 0);
       }
-      if (a.visual === "pillar" && show && Math.random() < 0.6) {
-        const ang = Math.random() * Math.PI * 2;
-        const r = Math.random() * a.radius;
-        this.particles.emit(a.x + Math.cos(ang) * r, y, a.z + Math.sin(ang) * r, 0, 2 + Math.random() * 2, 0, new THREE.Color(0xff8a30), 0.5, 0.4, 0);
+      // Feuersäule bzw. Lichtkreis: aufsteigende Funken (beim Licht mehr und in der Farbe der Fläche)
+      if ((a.visual === "pillar" || a.visual === "light") && show && Math.random() < 0.6) {
+        for (let n = a.visual === "light" ? 3 : 1; n > 0; n--) {
+          const ang = Math.random() * Math.PI * 2;
+          const r = Math.random() * a.radius;
+          this.particles.emit(a.x + Math.cos(ang) * r, y, a.z + Math.sin(ang) * r, 0, 2 + Math.random() * 2, 0, new THREE.Color(a.visual === "light" ? a.color : 0xff8a30), 0.5, 0.4, 0);
+        }
       }
     }
     for (const [id, v] of this.areas) {

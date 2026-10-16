@@ -167,6 +167,14 @@ Pfeil verlässt den Bogen kurz vor Schluss (`swing` in `champions.ts`, gilt jetz
 Flug ist ein kleines 3D-Modell (Schaft, Spitze, Federn), fliegt in einem flachen Bogen zur Brusthöhe des Ziels und zieht
 eine leichte Spur.
 
+## Elara (Support, Heilerin)
+
+Elara ist die Mixamo-Figur „Nightshade“ (`Supporter ….fbx`). Grundangriff: Magiegeschoss (`projColor`), Zauber auf
+1,15-2,15 s der Angriffsanimation gekürzt, das Geschoss fliegt beim Stoß der Hände. Fähigkeiten: Q Mondstrahl
+(Schaden, Verlangsamung), W Heilendes Licht (sie und der schwächste Verbündete in der Nähe), E Schutzsegen (Schild und
+Tempo für Verbündete in der Nähe), R Mondfall (großer Lichtkreis: Schaden und Betäubung für Gegner, Heilung für
+Verbündete). Bots nehmen für Support Elara; Thorne bleibt wählbar.
+
 ## 3D-Modell der Inhibitoren
 
 Die Inhibitoren sind das Modell aus `Inhibitor 1.0.zip` (Meshy-Stil, handbemalt, 902.000 Dreiecke): blaue

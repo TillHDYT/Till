@@ -38,6 +38,8 @@ export type ChampDef = {
   roleName: string;
   ranged: boolean;
   projectile?: "arrow" | "bolt";
+  /** Farbe des Geschosses beim Grundangriff (Fernkämpfer) */
+  projColor?: number;
   base: { hp: number; mana: number; ad: number; armor: number; mr: number; as: number; range: number; ms: number; hpReg: number; manaReg: number };
   growth: { hp: number; mana: number; ad: number; armor: number; mr: number; as: number };
   abilities: [AbilityDef, AbilityDef, AbilityDef, AbilityDef];
@@ -510,6 +512,141 @@ export const CHAMPIONS: ChampDef[] = [
           const missing = 1 - target.hp / target.stats.maxHp;
           w.damage(c, target, base * (1 + missing), "phys", { ability: true });
           w.fx({ type: "burst", x: target.x, z: target.z, r: 2.5, color: 0xc070ff, owner: c });
+        },
+      },
+    ],
+  },
+  {
+    id: "elara",
+    name: "Elara",
+    title: "die Mondpriesterin",
+    role: "support",
+    roleName: "Heilerin",
+    ranged: true,
+    projectile: "bolt",
+    projColor: 0xb8a0ff,
+    color: "#b8a0ff",
+    base: { hp: 540, mana: 400, ad: 48, armor: 24, mr: 30, as: 0.62, range: 7.5, ms: 6.7, hpReg: 1.4, manaReg: 2.4 },
+    growth: { hp: 84, mana: 50, ad: 2.6, armor: 3.8, mr: 1.3, as: 2 },
+    levelOrder: [3, 1, 0, 2],
+    build: ["boots", "timestaff", "spiritcloak", "deathcap", "warmog", "swiftboots"],
+    look: { body: 0x3a2a5a, accent: 0xd8c8ff, skin: 0xe8d0c0, hair: 0x2a2030, weapon: "staff", bulk: 0.95, cape: 0x4a3a7a },
+    // Zauber (Elara_Attack.glb, 1,15-2,15 s der Mixamo-Animation): Hände zurück, dann nach vorne gestoßen, das Geschoss
+    // fliegt beim Stoß (0,47 s); 1,2-mal so schnell abgespielt
+    swing: { clip: 1.0 / 1.2, hit: 0.47 / 1.2 },
+    abilities: [
+      {
+        name: "Mondstrahl",
+        desc: "Schickt einen Strahl Mondlicht los: Schaden und Verlangsamung beim ersten Gegner.",
+        icon: "🌙",
+        targeting: "dir",
+        range: 11,
+        width: 1.1,
+        cd: [6, 5.5, 5, 4.5],
+        mana: [45, 50, 55, 60],
+        ai: "poke",
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
+          const dmg = r4([70, 110, 150, 190], rank) + c.stats.ap * 0.6;
+          c.anim.cast = 0.35;
+          w.skillshot(c, {
+            dx: d.dx,
+            dz: d.dz,
+            speed: 24,
+            range: 11,
+            width: 1.1,
+            visual: "bolt",
+            color: 0xc8b0ff,
+            onHit: (u) => {
+              w.damage(c, u, dmg, "magic", { ability: true });
+              w.slow(u, 0.3, 1.5);
+              w.fx({ type: "burst", x: u.x, z: u.z, r: 1.6, color: 0xc8b0ff, owner: c });
+              return true;
+            },
+          });
+        },
+      },
+      {
+        name: "Heilendes Licht",
+        desc: "Heilt sich selbst und den am stärksten verletzten Verbündeten in der Nähe.",
+        icon: "💖",
+        targeting: "self",
+        range: 0,
+        radius: 9,
+        cd: [12, 11, 10, 9],
+        mana: [60, 70, 80, 90],
+        ai: "self",
+        cast: (w, c, _aim, rank) => {
+          const amt = r4([60, 90, 120, 150], rank) + c.stats.ap * 0.35;
+          c.anim.cast = 0.4;
+          w.heal(c, amt);
+          w.fx({ type: "heal", x: c.x, z: c.z, owner: c });
+          let best: Champion | null = null;
+          // alliesInRadius liefert nur Champions
+          for (const a of w.alliesInRadius(c.team, c.x, c.z, 9) as Champion[]) {
+            if (a === c) continue;
+            if (!best || a.hp / a.stats.maxHp < best.hp / best.stats.maxHp) best = a;
+          }
+          if (best) {
+            w.heal(best, amt);
+            w.fx({ type: "heal", x: best.x, z: best.z, owner: best });
+          }
+        },
+      },
+      {
+        name: "Schutzsegen",
+        desc: "Schild und kurz mehr Lauftempo für sich und Verbündete in der Nähe.",
+        icon: "🛡️",
+        targeting: "self",
+        range: 0,
+        radius: 6,
+        cd: [14, 13, 12, 11],
+        mana: [50, 55, 60, 65],
+        ai: "fight",
+        cast: (w, c, _aim, rank) => {
+          const amt = r4([50, 80, 110, 140], rank) + c.stats.ap * 0.4;
+          c.anim.cast = 0.35;
+          for (const a of w.alliesInRadius(c.team, c.x, c.z, 6)) {
+            w.shieldUnit(a, amt, 2.5);
+            w.addBuff(a, { id: "elaraE", until: w.t + 1.5, mods: { ms: 20 } });
+            w.fx({ type: "shield", x: a.x, z: a.z, owner: a });
+          }
+        },
+      },
+      {
+        name: "Mondfall",
+        desc: "Ein riesiger Kreis aus Mondlicht: Gegner darin erleiden starken Schaden und werden betäubt, Verbündete werden geheilt.",
+        icon: "🌕",
+        targeting: "point",
+        range: 14,
+        radius: 6,
+        cd: [90, 80, 70],
+        mana: [100, 100, 100],
+        ai: "engage",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 14);
+          const dmg = r4([180, 280, 380], rank) + c.stats.ap * 0.8;
+          const heal = r4([150, 230, 310], rank) + c.stats.ap * 0.5;
+          c.anim.cast = 0.6;
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: 6,
+            delay: 1.0,
+            visual: "light",
+            color: 0xd8c8ff,
+            onTrigger: (a) => {
+              w.fx({ type: "burst", x: a.x, z: a.z, r: a.radius, color: 0xe8dcff, owner: c, big: true });
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.damage(c, u, dmg, "magic", { ability: true });
+                w.stun(u, 1.25);
+              }
+              for (const u of w.alliesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.heal(u, heal);
+                w.fx({ type: "heal", x: u.x, z: u.z, owner: u });
+              }
+            },
+          });
         },
       },
     ],
