@@ -154,7 +154,9 @@ Kira ist das Meshy-Modell mit den Schwertern in den Händen, in Mixamo geriggt. 
 verschmolzenen Klingen auf Unterarm und Finger verteilt (sie verbiegen sich), macht `assets-src/rigid_swords.py`
 Faust, Griff und Klinge starr: alles außerhalb des Handgelenks gehört zu 100 % dem Handknochen. Danach
 `champion_fbx.py` (Modell `Kira.glb`) und `champion_anim.py --treffer` (`Kira_Attack1.glb`, `Kira_Attack2.glb`).
-Die zwei Schwertschläge wechseln sich ab; der zweite wird so gedehnt, dass sein Treffer auf den Schadensmoment fällt.
+Von beiden Schwertschlägen ist nur der Stich übrig (`--von`/`--bis`), Treffer = Klinge ganz vorne; sie wechseln sich ab,
+der zweite wird so gedehnt, dass sein Treffer auf den Schadensmoment fällt. Fremde Animationen bekommen die Hüft-
+und Fußhöhe dieses Modells (sonst sackt die Figur beim Wechsel zum Schlag ab).
 Laufen, Stehen und Sterben kommen vom früheren Kira-Modell (gleiches Mixamo-Skelett).
 
 ## 3D-Modell der Inhibitoren

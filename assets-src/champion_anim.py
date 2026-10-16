@@ -1,5 +1,5 @@
 # Holt eine einzelne Mixamo-Animation (FBX) als kleines GLB nur mit Skelett und Animation heraus:
-#   python champion_anim.py <animation.fbx> <ausgabe.glb> <Name> [--treffer]
+#   python champion_anim.py <animation.fbx> <ausgabe.glb> <Name> [--treffer] [--von s --bis s]
 # Das Skelett muss dasselbe sein wie beim Champion-Modell (gleiche Knochennamen), dann spielt das
 # Spiel die Animation direkt auf dem Modell ab (siehe loadChampionModels in models.ts).
 # Mit --treffer wird zusätzlich gemessen, wann die Faust am weitesten vorne ist (Treffermoment eines Schlags);
@@ -11,7 +11,10 @@ import bpy  # noqa: I001
 
 args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
 HIT = "--treffer" in args
-SRC, OUT, NAME = [a for a in args if a != "--treffer"][-3:]
+# --von/--bis: nur diesen Ausschnitt (Sekunden ab Clipbeginn) exportieren, z. B. Ausholen und Nachlauf kürzen
+CUT = [float(args[args.index(k) + 1]) if k in args else None for k in ("--von", "--bis")]
+plain = [a for i, a in enumerate(args) if a != "--treffer" and a not in ("--von", "--bis") and (i == 0 or args[i - 1] not in ("--von", "--bis"))]
+SRC, OUT, NAME = plain[-3:]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.fbx(filepath=SRC)
@@ -59,6 +62,9 @@ if HIT:
 for o in list(bpy.context.scene.objects):
     if o.type == "MESH":
         bpy.data.objects.remove(o)
+if CUT[0] is not None or CUT[1] is not None:
+    f0, f1 = (f0 + round(CUT[0] * fps) if CUT[0] is not None else f0), (f0 + round(CUT[1] * fps) if CUT[1] is not None else f1)
+    print(f"Ausschnitt Bild {f0}-{f1} = {(f1 - f0) / fps:.3f} s")
 sc.frame_start, sc.frame_end = f0, f1
 bpy.ops.object.select_all(action="DESELECT")
 arm.select_set(True)
@@ -68,6 +74,7 @@ bpy.ops.export_scene.gltf(
     use_selection=True,
     export_animations=True,
     export_animation_mode="ACTIONS",
+    export_frame_range=CUT != [None, None],
     export_skins=True,
     export_yup=True,
 )

@@ -144,16 +144,19 @@ const CHAMP_MODELS: Record<string, string> = { kira: kiraUrl, thorne: tankUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
-type AnimSrc = { url: string; file: string; hit?: number };
+/** fremd: Animation eines anderen Modells mit gleichem Skelett; ihre Hüfthöhe wird an dieses Modell angepasst. */
+type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean };
 const CHAMP_ANIMS: Record<string, { run?: AnimSrc; idle?: AnimSrc; attack?: AnimSrc; attack2?: AnimSrc; death?: AnimSrc }> = {
   // Kira: Modell mit den Schwertern in den Händen (Mixamo, Klingen starr am Handknochen, assets-src/rigid_swords.py);
   // Laufen, Stehen und Sterben vom früheren Kira-Modell mit gleichem Mixamo-Skelett
   kira: {
-    run: { url: assassinUrl, file: "src/assets/models/Assassine.glb (Laufanimation)" },
-    idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)" },
-    attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 1.101 },
-    attack2: { url: kiraAttack2Url, file: "src/assets/models/Kira_Attack2.glb (aus SchwertSchlagAnimation2.fbx)", hit: 1.067 },
-    death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)" },
+    run: { url: assassinUrl, file: "src/assets/models/Assassine.glb (Laufanimation)", fremd: true },
+    idle: { url: assassinIdleUrl, file: "src/assets/models/Assassine_Idle.glb (aus Standing Idle.fbx)", fremd: true },
+    // nur der Stich: Schlag 1 ab 0,20 s bis 1,30 s, Schlag 2 ab 0,15 s bis 1,00 s (champion_anim.py --von/--bis);
+    // Treffer = Klinge ganz vorne (Hand schnellt nach vorne)
+    attack: { url: kiraAttack1Url, file: "src/assets/models/Kira_Attack1.glb (aus SchwertSchlag1.Animation.fbx)", hit: 0.42 },
+    attack2: { url: kiraAttack2Url, file: "src/assets/models/Kira_Attack2.glb (aus SchwertSchlagAnimation2.fbx)", hit: 0.27 },
+    death: { url: assassinDeathUrl, file: "src/assets/models/Assassine_Death.glb (aus Standing React Death Right.fbx)", fremd: true },
   },
   thorne: {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
@@ -204,6 +207,55 @@ function clipFromZero(clip: THREE.AnimationClip) {
 }
 
 /** Lädt eine Zusatzanimation; fehlt sie, wird genau die Datei gemeldet und nichts ersetzt. */
+/** Abstand der Hüfte vom Ursprung im ersten Bild (Positionsspur, im Wesentlichen ihre Höhe), null ohne Spur. */
+function hipsY(c: THREE.AnimationClip | null) {
+  const t = c?.tracks.find((k) => k.name.endsWith("Hips.position"));
+  return t ? Math.hypot(t.values[0], t.values[1], t.values[2]) : null;
+}
+
+/** Modell in das erste Bild eines Clips stellen. */
+function posed(model: THREE.Object3D, clip: THREE.AnimationClip) {
+  const m = new THREE.AnimationMixer(model);
+  m.clipAction(clip).play();
+  m.update(0);
+  model.updateMatrixWorld(true);
+  // nicht stoppen: three.js stellt beim Stoppen die Ausgangshaltung wieder her
+  return model;
+}
+
+/** Tiefster Fußknochen (Höhe im Modell). */
+function footY(model: THREE.Object3D) {
+  let y = Infinity;
+  const v = new THREE.Vector3();
+  for (const n of ["mixamorigLeftToeBase", "mixamorigRightToeBase", "mixamorigLeftFoot", "mixamorigRightFoot"]) {
+    const b = model.getObjectByName(n);
+    if (b) y = Math.min(y, b.getWorldPosition(v).y);
+  }
+  return Number.isFinite(y) ? y : 0;
+}
+
+/** Hüft-Positionsspur eines Clips so verschieben, dass die Figur um dy (Modellraum) höher steht. */
+function liftHips(model: THREE.Object3D, clip: THREE.AnimationClip, dy: number) {
+  const t = clip.tracks.find((k) => k.name.endsWith("Hips.position"));
+  const parent = model.getObjectByName("mixamorigHips")?.parent;
+  if (!t || !parent || !Number.isFinite(dy) || Math.abs(dy) < 1e-4) return;
+  // Verschiebung in den Raum des Hüft-Elternknotens umrechnen (Mixamo: gedreht und skaliert)
+  const inv = parent.matrixWorld.clone().invert();
+  const local = new THREE.Vector3(0, dy, 0).applyMatrix4(inv).sub(new THREE.Vector3().applyMatrix4(inv));
+  for (let i = 0; i < t.values.length; i += 3) {
+    t.values[i] += local.x;
+    t.values[i + 1] += local.y;
+    t.values[i + 2] += local.z;
+  }
+}
+
+/** Hüft-Positionsspur so skalieren, dass die Hüfte im ersten Bild so hoch liegt wie `y` (siehe hipsY). */
+function scaleHips(c: THREE.AnimationClip, y: number) {
+  const t = c.tracks.find((k) => k.name.endsWith("Hips.position"));
+  const y0 = hipsY(c) ?? 0;
+  if (t && y0 > 0) for (let i = 0; i < t.values.length; i++) t.values[i] *= y / y0;
+}
+
 async function loadExtraClip(src: AnimSrc | undefined, id: string, what: string) {
   if (!src) return null;
   try {
@@ -269,6 +321,9 @@ export async function loadChampionModels() {
           loadExtraClip(anims.attack2, id, "Zweite Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
         ]);
+        // Hüfthöhe fremder Animationen an dieses Modell anpassen (sonst sackt die Figur beim Wechsel zum Schlag ab)
+        const ownHips = hipsY(attack) ?? hipsY(clipFromZero(found));
+        for (const [c, src] of [[run, anims.run], [idle, anims.idle], [death, anims.death]] as const) if (c && src?.fremd && ownHips) scaleHips(c, ownHips);
         const clip = run ?? clipFromZero(found);
         const hitFrac = [attack && anims.attack?.hit, attack2 && anims.attack2?.hit].flatMap((h, i) => (h ? [h / [attack, attack2][i]!.duration] : []));
         gltf.scene.updateMatrixWorld(true);
@@ -278,11 +333,10 @@ export async function loadChampionModels() {
         let box = new THREE.Box3().setFromObject(gltf.scene);
         if (run) {
           const probe = cloneSkinned(gltf.scene);
-          const pm = new THREE.AnimationMixer(probe);
-          pm.clipAction(clip).play();
-          pm.update(0);
-          probe.updateMatrixWorld(true);
-          box = new THREE.Box3().setFromObject(probe, true);
+          box = new THREE.Box3().setFromObject(posed(probe, clip), true);
+          // Stehen und Schläge: Füße auf dieselbe Höhe wie beim Laufen bringen
+          const ground = footY(posed(probe, clip));
+          for (const c of [idle, attack, attack2]) if (c) liftHips(probe, c, ground - footY(posed(probe, c)));
         }
         let noUv = false;
         gltf.scene.traverse((o) => {
