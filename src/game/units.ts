@@ -336,7 +336,8 @@ export class Structure extends Unit {
     let r = 1.7;
     if (kind === "turret") {
       const hp = tier === "outer" ? 3000 : tier === "inner" ? 2900 : tier === "inhib" ? 2800 : 2400;
-      Object.assign(base, { maxHp: hp, ad: 165, as: 0.85, range: 11.5, armor: 45, mr: 45 });
+      // Reichweite knapp über der der Fernkämpfer (12), damit sie Türme nicht ungestraft beschießen
+      Object.assign(base, { maxHp: hp, ad: 165, as: 0.85, range: 13, armor: 45, mr: 45 });
     } else if (kind === "inhib") {
       Object.assign(base, { maxHp: 2600, armor: 20, mr: 20 });
       // Steinring des 3D-Modells hat Radius 3.2-3.6; jeder Inhibitor hat mindestens 7.25 Platz bis zur nächsten Wand, die Wege bleiben frei

@@ -206,7 +206,7 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
     death: { url: varokDeathUrl, file: "src/assets/models/Varok_Death.glb (aus Krieger Todes Animation.fbx)" },
     casts: [
       { url: varokQUrl, file: "src/assets/models/Varok_Q.glb (aus Krieger Fähigkeit Q Animation.fbx)", rate: 1.3 },
-      { url: varokWUrl, file: "src/assets/models/Varok_W.glb (aus Krieger Fähigkeit W Animation.fbx, 0-2 s)", rate: 1.3 },
+      { url: varokWUrl, file: "src/assets/models/Varok_W.glb (aus Krieger Fähigkeit W Animation (2).fbx)", rate: 1.2 },
       { url: varokEUrl, file: "src/assets/models/Varok_E.glb (aus Krieger Fähigkeit E Great Sword Slide Attack.fbx)", rate: 2 },
       { url: varokRUrl, file: "src/assets/models/Varok_R.glb (aus Krieger Fähigkeit R Ultimate Animation.fbx)", rate: 1.3 },
     ],

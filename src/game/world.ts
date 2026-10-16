@@ -1924,7 +1924,8 @@ export class World {
     const add = (u: Unit, r: number) => {
       if (u.team === 0 || u.team === 1) obs[u.team].push({ x: u.x, z: u.z, r, b: g.brushAt(u.x, u.z) });
     };
-    for (const c of this.champs) if (c.alive) add(c, 14);
+    // Sicht der Champions (etwas weiter als die Reichweite der Fernkämpfer)
+    for (const c of this.champs) if (c.alive) add(c, 16);
     for (const m of this.minions) if (m.alive) add(m, 9);
     for (const s of this.structures) if (s.alive) add(s, s.kind === "turret" ? 13 : 10);
     for (const team of [0, 1] as const) obs[team].push({ x: FOUNTAIN[team].x, z: FOUNTAIN[team].z, r: 22, b: -1 });

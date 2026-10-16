@@ -172,7 +172,7 @@ eine leichte Spur.
 Varok ist die Mixamo-Kriegerin „Maria“ (`Krieger ….fbx`), das Schwert ist ein eigenes Teil. Schläge in fester
 Reihenfolge Schlag 1, Schlag 2, Schlag 1 gespiegelt, Schlag 2 (`order` in `CHAMP_ANIMS`), beide auf den Hieb gekürzt.
 Fähigkeiten mit eigener Animation (`casts`, startet beim Zaubern, ein Schlag oder Weglaufen beendet sie):
-Q Klingenwirbel (wirbelt 7,5 nach vorn), W Kampfschrei, E Ansturm (Rutsch-Angriff 8 weit), R Richtspruch (Sprung, die
+Q Klingenwirbel (wirbelt 7,5 nach vorn), W Kampfschrei (Animation aus „W Animation (2)“), E Ansturm (Rutsch-Angriff 8 weit), R Richtspruch (Sprung, die
 Landung fällt auf den Hieb der Animation). Q, E und R bewegen sich in den Original-Animationen selbst vorwärts; diese
 Bewegung ist herausgerechnet (`champion_anim.py --auf-der-stelle`), Strecke und Tempo macht das Spiel.
 
