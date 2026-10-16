@@ -10,12 +10,12 @@ import {
   MAP,
   RIVER,
   RIVER_WIDTH,
-  CORRIDORS,
   inBaseArea,
   distToPolyline,
   type LaneId,
   type V2,
 } from "./mapdata";
+import { JUNGLE_MASK } from "./jungleMask";
 import { START_BASE_FOOTPRINT } from "./startbaseFootprint";
 
 // Deterministischer Zufall, damit die Karte bei jedem Start gleich aussieht.
@@ -65,17 +65,37 @@ function pointInPoly(p: V2, poly: V2[]) {
   return inside;
 }
 
-// Lichtungen um die Camps: Platz für die großen Monster und ihre Kuhlen (CAMP_PIT)
-const CLEARING: Record<string, number> = {
-  gromp: 8,
-  wolves: 8,
-  raptors: 8,
-  krugs: 8,
-  baron: 10.5,
-  dragon: 10.5,
-  blue: 9,
-  red: 9,
-  scuttle: 5,
+/** Unregelmäßiger Umriss der Camp-Böden (kein runder Kreis): Faktor auf den Radius je Richtung. */
+export function campShape(c: V2, x: number, z: number) {
+  const a = Math.atan2(z - c.z, x - c.x);
+  return 0.72 + 0.56 * fbm(c.x * 0.13 + Math.cos(a) * 1.1, c.z * 0.13 + Math.sin(a) * 1.1);
+}
+/** Abstand zum Camp, bezogen auf den unregelmäßigen Umriss (vergleichbar mit CAMP_PIT). */
+export function campDist(c: V2, x: number, z: number) {
+  return Math.hypot(x - c.x, z - c.z) / campShape(c, x, z);
+}
+
+/** Lauflängen-Maske (frei, gesetzt, frei, …) aus jungleMask.ts entpacken. */
+function unpackMask(rows: string[], n: number) {
+  const out = new Uint8Array(n * n);
+  rows.forEach((row, z) => {
+    let x = 0;
+    row.split(",").forEach((len, k) => {
+      const l = Number(len);
+      if (k % 2) out.fill(1, z * n + x, z * n + x + l);
+      x += l;
+    });
+  });
+  return out;
+}
+const JUNGLE_WALL = unpackMask(JUNGLE_MASK.rows, JUNGLE_MASK.n);
+const RIVER_POOL = unpackMask(JUNGLE_MASK.pool, JUNGLE_MASK.n);
+/** Wert der Masken an einer Kartenposition. */
+const maskAt = (m: Uint8Array, x: number, z: number) => {
+  const n = JUNGLE_MASK.n;
+  const mx = Math.min(n - 1, Math.max(0, Math.floor((x / MAP) * n)));
+  const mz = Math.min(n - 1, Math.max(0, Math.floor((z / MAP) * n)));
+  return m[mz * n + mx];
 };
 
 function edt(seed: Uint8Array, n: number): Float32Array {
@@ -248,36 +268,27 @@ export class NavGrid {
         }
         this.lane[i] = laneT;
 
+        // Fluss: schmaler Lauf über die ganze Diagonale, dazu die Becken um Baron und Drache
         const rw = RIVER_WIDTH / 2 + (fbm(p.x * 0.07, p.z * 0.07) - 0.5) * 3;
         const rd = distToPolyline(p, RIVER);
-        const riverT = 1 - smooth(rw - 3, rw, rd);
+        const riverT = Math.max(1 - smooth(rw - 3, rw, rd), maskAt(RIVER_POOL, p.x, p.z));
         this.river[i] = riverT;
 
         let inBase = -1;
         for (const t of [0, 1] as const) if (inBaseArea(t, p)) inBase = t;
         this.base[i] = inBase;
 
-        // Grundzustand: Wald. Pfade schneiden den Jungle frei.
-        let open = false;
-        if (pointInPoly(p, ring)) {
-          const wob = (fbm(p.x * 0.16, p.z * 0.16) - 0.5) * 2.4;
-          for (const c of CORRIDORS) {
-            if (distToPolyline(p, c.pts) < c.w / 2 + wob) {
-              open = true;
-              break;
-            }
-          }
-        }
+        // Außerhalb der Lanes Wald, innen frei bis auf die Wandinseln des Jungles
+        let open = pointInPoly(p, ring) && !maskAt(JUNGLE_WALL, p.x, p.z);
         // Freischneiden
         if (laneT > 0.25) open = true;
-        if (rd < rw) open = true;
         if (inBase >= 0) open = true;
         for (const f of FOUNTAIN) {
           if (Math.hypot(p.x - f.x, p.z - f.z) < FOUNTAIN_RADIUS + 1) open = true;
         }
+        // Standplatz der Monster immer frei (die Nischen selbst kommen aus der Maske)
         for (const c of CAMPS) {
-          const r = (CLEARING[c.kind] ?? 6) + (fbm(p.x * 0.3, p.z * 0.3) - 0.5) * 2;
-          if (Math.hypot(p.x - c.pos.x, p.z - c.pos.z) < r) open = true;
+          if (Math.hypot(p.x - c.pos.x, p.z - c.pos.z) < 3) open = true;
         }
         for (const b of BRUSHES) {
           if (Math.hypot(p.x - b.p.x, p.z - b.p.z) < b.r + 1.2) open = true;
@@ -297,6 +308,9 @@ export class NavGrid {
       const toWall = edt(grown, n);
       for (let i = 0; i < n * n; i++) if (!this.walk[i] && toWall[i] > THIN_WALL) this.walk[i] = 1;
     }
+
+    // kein Wasser unter den Wandinseln
+    for (let i = 0; i < n * n; i++) if (!this.walk[i]) this.river[i] = 0;
 
     // Büsche: begehbar, merken pro Zelle.
     BRUSHES.forEach((b, bi) => {
@@ -383,19 +397,17 @@ export class NavGrid {
         h[z * (N + 1) + x] = open + (wall - open) * k;
       }
     }
-    // Kuhlen der Dschungel-Camps: flache Mulde, zum Rand weich ansteigend, mit leichtem Wall
+    // Kuhlen der Dschungel-Camps: flache, unregelmäßige Mulde, zum Rand weich ansteigend
     for (const c of CAMPS) {
       const r = CAMP_PIT[c.kind];
       if (!r) continue;
-      const ext = Math.ceil((r + 1.6) * R);
+      const ext = Math.ceil(r * 1.4 * R);
       const cx = Math.round(c.pos.x * R);
       const cz = Math.round(c.pos.z * R);
       for (let z = Math.max(0, cz - ext); z <= Math.min(N, cz + ext); z++) {
         for (let x = Math.max(0, cx - ext); x <= Math.min(N, cx + ext); x++) {
-          const d = Math.hypot(x / R - c.pos.x, z / R - c.pos.z);
-          const dip = CAMP_PIT_DEPTH * (1 - smooth(r * 0.55, r, d));
-          const rim = 0.12 * Math.max(0, 1 - Math.abs(d - (r + 0.5)) / 0.8);
-          h[z * (N + 1) + x] += rim - dip;
+          const d = campDist(c.pos, x / R, z / R);
+          h[z * (N + 1) + x] -= CAMP_PIT_DEPTH * (1 - smooth(r * 0.55, r, d));
         }
       }
     }

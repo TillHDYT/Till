@@ -3,7 +3,7 @@
 
 /** Vergrößerung der Karte: alle Positionen unten sind auf 200 x 200 angegeben und werden damit gestreckt
  *  (Breiten von Lanes, Fluss und Wegen und die Größe der Figuren bleiben gleich). */
-export const MAP_SCALE = 1.25;
+export const MAP_SCALE = 1.5;
 export const MAP = 200 * MAP_SCALE;
 
 export type V2 = { x: number; z: number };
@@ -11,6 +11,8 @@ export type Team = 0 | 1;
 export type LaneId = "top" | "mid" | "bot";
 
 export const v = (x: number, z: number): V2 => ({ x: x * MAP_SCALE, z: z * MAP_SCALE });
+/** Position aus LoL-Koordinaten der Kluft (0..14870, y nach oben, Blau unten links). */
+export const lol = (X: number, Y: number): V2 => ({ x: (X / 14870) * MAP, z: (1 - Y / 14870) * MAP });
 /** Punktspiegelung auf die rote Seite. */
 export const mirror = (p: V2): V2 => ({ x: MAP - p.x, z: MAP - p.z });
 
@@ -72,14 +74,14 @@ export const SPAWN: [V2, V2] = [v(13, 187), mirror(v(13, 187))];
 export type CampKind = "blue" | "red" | "gromp" | "wolves" | "raptors" | "krugs" | "dragon" | "baron" | "scuttle";
 export type CampSpec = { id: string; kind: CampKind; pos: V2; side: Team | -1 };
 
-// Camp-Positionen wie in LoL (Koordinaten der Kluft auf 200 x 200 umgerechnet, z nach unten)
+// Camp-Positionen wie in LoL (LoL-Koordinaten; dieselben nutzt assets-src/jungle/mask.py für die Nischen)
 const BLUE_CAMPS: { kind: CampKind; pos: V2 }[] = [
-  { kind: "blue", pos: v(51, 93) },
-  { kind: "gromp", pos: v(31, 86) },
-  { kind: "wolves", pos: v(51, 113) },
-  { kind: "raptors", pos: v(92, 126) },
-  { kind: "red", pos: v(104, 145) },
-  { kind: "krugs", pos: v(113, 164) },
+  { kind: "blue", pos: lol(3821, 8101) },
+  { kind: "gromp", pos: lol(2288, 8448) },
+  { kind: "wolves", pos: lol(3780, 6443) },
+  { kind: "raptors", pos: lol(6943, 5422) },
+  { kind: "red", pos: lol(7765, 4020) },
+  { kind: "krugs", pos: lol(8394, 2641) },
 ];
 
 /** Kuhle (Mulde im Boden) jedes Dschungel-Camps: Radius, in dem die Monster stehen; frei von Baumkronen. */
@@ -94,70 +96,34 @@ export const MONSTER_SIZE = 2;
 /** Trefferzone (Radius) der Dschungelmonster wächst mit, damit niemand im Modell steht. */
 export const MONSTER_RADIUS = 1.5;
 
-export const BARON_POS = v(63, 55);
-export const DRAGON_POS = mirror(BARON_POS);
+export const DRAGON_POS = lol(9866, 4414);
+export const BARON_POS = mirror(DRAGON_POS);
+const SCUTTLE_POS = lol(10500, 5170);
 
 export const CAMPS: CampSpec[] = [
   ...BLUE_CAMPS.map((c, i) => ({ id: `b${i}`, kind: c.kind, pos: c.pos, side: 0 as const })),
   ...BLUE_CAMPS.map((c, i) => ({ id: `r${i}`, kind: c.kind, pos: mirror(c.pos), side: 1 as const })),
   { id: "baron", kind: "baron", pos: BARON_POS, side: -1 },
   { id: "dragon", kind: "dragon", pos: DRAGON_POS, side: -1 },
-  { id: "scuttleT", kind: "scuttle", pos: v(78, 74), side: -1 },
-  { id: "scuttleB", kind: "scuttle", pos: mirror(v(78, 74)), side: -1 },
+  { id: "scuttleT", kind: "scuttle", pos: mirror(SCUTTLE_POS), side: -1 },
+  { id: "scuttleB", kind: "scuttle", pos: SCUTTLE_POS, side: -1 },
 ];
 
-// Der Jungle ist dichter Wald. Begehbar sind nur Lanes, Fluss, Basen,
-// Camp-Lichtungen und diese Pfade (blaue Seite, Rot wird gespiegelt).
-export type Corridor = { pts: V2[]; w: number };
-const path = (w: number, ...xz: number[]): Corridor => {
-  const pts: V2[] = [];
-  for (let i = 0; i < xz.length; i += 2) pts.push(v(xz[i], xz[i + 1]));
-  return { pts, w };
-};
-
-const BLUE_PATHS: Corridor[] = [
-  // linker Jungle (zwischen Top und Mid): Kröte - Blauer Wächter - Wölfe
-  path(7, 18, 84, 31, 86, 51, 93),
-  path(7.5, 51, 93, 51, 113, 56, 128, 60, 140),
-  path(6.5, 51, 113, 62, 118, 72, 122),
-  path(7, 51, 93, 60, 84, 64, 76),
-  path(6.5, 31, 86, 32, 70, 40, 54),
-  path(7, 51, 93, 68, 102, 88, 108),
-  path(6, 18, 118, 34, 118, 51, 113),
-  path(6, 32, 70, 52, 72, 64, 76),
-  path(6, 20, 44, 30, 46, 40, 54),
-  // unterer Jungle (zwischen Mid und Bot): Raptoren - Roter Wächter - Golems
-  path(7.5, 58, 162, 80, 152, 104, 145),
-  path(7, 104, 145, 113, 164, 120, 180),
-  path(7, 104, 145, 92, 126, 84, 118),
-  path(6.5, 92, 126, 110, 118),
-  path(7, 104, 145, 124, 146, 136, 140),
-  path(6.5, 113, 164, 140, 166, 156, 178),
-  path(6.5, 82, 182, 82, 168, 80, 152),
-  path(6, 110, 118, 126, 128, 136, 140),
-  path(6, 124, 146, 146, 150, 156, 160),
-  path(6, 64, 140, 74, 144, 80, 152),
-];
-
-export const CORRIDORS: Corridor[] = [
-  ...BLUE_PATHS,
-  ...BLUE_PATHS.map((c) => ({ pts: c.pts.map(mirror), w: c.w })),
-];
+// Wände im Jungle: Baum- und Felsinseln wie auf der Kluft, siehe jungleMask.ts (assets-src/jungle/mask.py).
 
 // Büsche (Gras zum Verstecken), Kreise.
 const BLUE_BRUSH: { p: V2; r: number }[] = [
-  { p: v(23, 44), r: 2.6 },
-  { p: v(26, 34), r: 2.4 },
-  { p: v(36, 72), r: 2.4 },
-  { p: v(88, 104), r: 2.6 },
-  { p: v(110, 96), r: 2.6 },
-  { p: v(70, 102), r: 2.4 },
-  { p: v(86, 126), r: 2.4 },
-  { p: v(36, 120), r: 2.2 },
-  { p: v(118, 152), r: 2.4 },
-  { p: v(132, 178), r: 2.6 },
-  { p: v(150, 178), r: 2.4 },
-  { p: v(108, 160), r: 2.2 },
+  { p: lol(1626, 9860), r: 3 },
+  { p: lol(4356, 7290), r: 2.8 },
+  { p: lol(2541, 7609), r: 2.6 },
+  { p: lol(6172, 7537), r: 2.8 },
+  { p: lol(5257, 5576), r: 2.6 },
+  { p: lol(6215, 5983), r: 2.6 },
+  { p: lol(6825, 3834), r: 2.8 },
+  { p: lol(9032, 2701), r: 2.6 },
+  { p: lol(8568, 5983), r: 2.8 },
+  { p: lol(12198, 3514), r: 3 },
+  { p: lol(10165, 2352), r: 2.6 },
 ];
 
 export const BRUSHES: { p: V2; r: number }[] = [

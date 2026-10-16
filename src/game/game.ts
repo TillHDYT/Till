@@ -71,7 +71,7 @@ export class Game {
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(0x0e1a10);
-    this.camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 1, 400);
+    this.camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 1, Math.max(400, MAP * 1.5));
 
     const hemi = new THREE.HemisphereLight(0xd6ecff, 0x3a4a2a, 1.6);
     this.scene.add(hemi);
@@ -258,7 +258,7 @@ export class Game {
     const dist = 38 * zoom * pf;
     let nearPlane = 1;
     if (this.debugTop) {
-      this.camera.position.set(MAP / 2, 260, MAP / 2 + 0.01);
+      this.camera.position.set(MAP / 2, MAP * 1.3, MAP / 2 + 0.01);
       this.camera.lookAt(MAP / 2, 0, MAP / 2);
     } else {
       const sh = this.shake > 0 ? this.shake * 0.4 * Math.min(1, zoom / NEAR_ZOOM) : 0;
