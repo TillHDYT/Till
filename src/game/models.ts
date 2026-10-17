@@ -17,7 +17,10 @@ import baseGroundUrl from "../assets/basemodel.glb";
 import jgCampUrl from "../assets/jgcamp.glb";
 import treeUrl from "../assets/tree.glb";
 import treeGroupUrl from "../assets/treegroup.glb";
+import treeHiUrl from "../assets/tree_hi.glb";
+import treeGroupHiUrl from "../assets/treegroup_hi.glb";
 import wallUrl from "../assets/wall.glb";
+import wallHiUrl from "../assets/wall_hi.glb";
 import { TREE_ASSETS, WALL_ASSET } from "./treeAssets";
 import assassinUrl from "../assets/models/Assassine.glb";
 import elaraUrl from "../assets/models/Elara.glb";
@@ -2180,35 +2183,41 @@ export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: numb
   return g;
 }
 
-// ---------------- Bäume aus den Modellen (assets-src/trees -> tree.glb, treegroup.glb) ----------------
+// ---------------- Bäume und Mauer aus den Modellen (assets-src/trees, assets-src/wall) ----------------
 
-/** Lädt Baum und Baumgruppe für den Wald. Bei einem Fehler bleiben die gebauten Bäume. */
-export async function loadTrees(): Promise<boolean> {
-  if (TREE_ASSETS.list) return true;
-  try {
-    const list = [];
-    for (const url of [treeUrl, treeGroupUrl]) {
-      const mesh = (await loadGlbOffline(url)).scene.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
-      if (!mesh) throw new Error("Baum-GLB ohne Mesh");
-      mesh.updateWorldMatrix(true, false);
-      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-      geo.computeBoundingBox();
-      const map = (mesh.material as THREE.MeshStandardMaterial).map;
-      list.push({ geo, map, height: geo.boundingBox!.max.y });
+/** Je Grafikstufe: Handy (wenige Dreiecke, 1024er Texturen) oder PC (mehr Dreiecke, 2048er Texturen). */
+const FOREST_URLS = { low: [treeUrl, treeGroupUrl, wallUrl], high: [treeHiUrl, treeGroupHiUrl, wallHiUrl] };
+const forestLoaded = new Map<string, { trees: NonNullable<(typeof TREE_ASSETS)["list"]>; wall: NonNullable<(typeof WALL_ASSET)["asset"]> }>();
+
+/** Lädt Baum, Baumgruppe und Mauerstück für die Grafikstufe. Bei einem Fehler bleiben die gebauten Bäume. */
+export async function loadTrees(quality: "high" | "low" = "low"): Promise<boolean> {
+  let set = forestLoaded.get(quality);
+  if (!set) {
+    try {
+      const meshes = [];
+      for (const url of FOREST_URLS[quality]) {
+        const mesh = (await loadGlbOffline(url)).scene.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
+        if (!mesh) throw new Error("Wald-GLB ohne Mesh");
+        mesh.updateWorldMatrix(true, false);
+        const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+        geo.computeBoundingBox();
+        const m = mesh.material as THREE.MeshStandardMaterial;
+        meshes.push({ geo, map: m.map, normalMap: m.normalMap });
+      }
+      const [t0, t1, w] = meshes;
+      const bb = w.geo.boundingBox!;
+      set = {
+        trees: [t0, t1].map((t) => ({ ...t, height: t.geo.boundingBox!.max.y })),
+        wall: { ...w, length: bb.max.x - bb.min.x, depth: -bb.min.z, height: bb.max.y },
+      };
+      forestLoaded.set(quality, set);
+    } catch (err) {
+      console.error("Wald-Modelle konnten nicht geladen werden:", err);
+      return false;
     }
-    TREE_ASSETS.list = list;
-    const wm = (await loadGlbOffline(wallUrl)).scene.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
-    if (wm) {
-      wm.updateWorldMatrix(true, false);
-      const geo = wm.geometry.clone().applyMatrix4(wm.matrixWorld);
-      geo.computeBoundingBox();
-      const bb = geo.boundingBox!;
-      WALL_ASSET.asset = { geo, map: (wm.material as THREE.MeshStandardMaterial).map, length: bb.max.x - bb.min.x, depth: -bb.min.z, height: bb.max.y };
-    }
-  } catch (err) {
-    console.error("Baum-Modelle konnten nicht geladen werden:", err);
-    return false;
   }
+  TREE_ASSETS.list = set.trees;
+  WALL_ASSET.asset = set.wall;
   return true;
 }
 

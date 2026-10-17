@@ -1008,7 +1008,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   if (models) {
     // Bäume aus den Modellen: einzelner Baum und Dreiergruppe, etwas Farbe und Größe je Baum
     models.forEach((t, kind) => {
-      const mat = new THREE.MeshLambertMaterial({ map: t.map ?? undefined });
+      const mat = new THREE.MeshLambertMaterial({ map: t.map ?? undefined, normalMap: t.normalMap ?? undefined });
       if (mat.map) {
         mat.map.colorSpace = THREE.SRGBColorSpace;
         mat.map.anisotropy = 4;
@@ -1084,7 +1084,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       // abgeschnitten ist) die Mauer
       return grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.niche + 2);
     });
-    const mat = new THREE.MeshLambertMaterial({ map: wallAsset.map ?? undefined, color: new THREE.Color(2.0, 2.0, 2.0) });
+    const mat = new THREE.MeshLambertMaterial({ map: wallAsset.map ?? undefined, normalMap: wallAsset.normalMap ?? undefined, color: new THREE.Color(2.0, 2.0, 2.0) });
     if (mat.map) {
       mat.map.colorSpace = THREE.SRGBColorSpace;
       mat.map.anisotropy = 4;

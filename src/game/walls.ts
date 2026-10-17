@@ -8,7 +8,7 @@ import { cellSample, type NavGrid } from "./navgrid";
  * Inseln entsteht so ein geschlossener Ring. Die Vorderseite sitzt an der Wegkante, die Mauer reicht in die Wand
  * hinein; bei dünnen Wänden wird sie schmaler, damit sie nie auf der anderen Seite in einen Weg ragt.
  */
-export type WallAsset = { geo: THREE.BufferGeometry; map: THREE.Texture | null; length: number; depth: number; height: number };
+export type WallAsset = { geo: THREE.BufferGeometry; map: THREE.Texture | null; normalMap: THREE.Texture | null; length: number; depth: number; height: number };
 
 /** Maßstab des Mauerstücks (Modell-Einheiten -> Welt): Länge ~7.5, Tiefe ~2.8. */
 const WALL_SCALE = 4;

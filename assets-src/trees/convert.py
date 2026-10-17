@@ -1,13 +1,16 @@
 """Bäume für den ganzen Wald aus den Meshy-Exporten (Zip mit FBX + Textur): einzelner Baum und Dreiergruppe.
 
-Stark vereinfacht (Tausende Kopien im Spiel), Fuß auf y = 0, Mitte des Stamms im Ursprung, Höhe in Modell-Einheiten
-(Skalierung im Spiel), Textur 1024².
-Aufruf (Blender-Python): python convert.py quelle.fbx(zip) ziel.glb DREIECKE
+Vereinfacht (Tausende Kopien im Spiel) mit eingebrannter Normalmap (../lowpoly.py), Fuß auf y = 0, Mitte des Stamms
+im Ursprung, Höhe in Modell-Einheiten (Skalierung im Spiel). Zwei Stufen: Handy (wenig Dreiecke, 1024²) und PC.
+Aufruf (Blender-Python): python convert.py quelle.fbx(zip) ziel.glb DREIECKE TEXTUR NORMALMAP
 """
 import os, sys, tempfile, zipfile
 import bpy
 
-src, out_glb, target = sys.argv[-3], sys.argv[-2], int(sys.argv[-1])
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from lowpoly import lowpoly  # noqa: E402
+
+src, out_glb, target, tex, nrm = sys.argv[-5], sys.argv[-4], int(sys.argv[-3]), int(sys.argv[-2]), int(sys.argv[-1])
 tmp = tempfile.mkdtemp()
 with zipfile.ZipFile(src) as z:
     z.extractall(tmp)
@@ -19,10 +22,7 @@ o.name = "Tree"
 bpy.context.view_layer.objects.active = o
 o.select_set(True)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-n0 = len(o.data.polygons)
-mod = o.modifiers.new("dec", "DECIMATE")
-mod.ratio = min(1.0, target / n0)
-bpy.ops.object.modifier_apply(modifier="dec")
+o = lowpoly(o, target, tex, nrm, 0.03)
 # Fuß auf 0, Mitte der Grundfläche in den Ursprung
 zs = [v.co.z for v in o.data.vertices]
 z0 = min(zs)
@@ -34,16 +34,7 @@ for v in o.data.vertices:
     v.co.y -= cy
     v.co.z -= z0
 o.data.update()
-bpy.ops.object.shade_smooth()
-print("Dreiecke", n0, "->", len(o.data.polygons), "Höhe", max(zs) - z0)
-for im in bpy.data.images:
-    if im.size[0] > 1024:
-        im.scale(1024, 1024)
-mat = o.data.materials[0]
-bsdf = mat.node_tree.nodes.get("Principled BSDF")
-if bsdf:
-    bsdf.inputs["Roughness"].default_value = 0.9
-    bsdf.inputs["Metallic"].default_value = 0.0
+print("Höhe", max(zs) - z0)
 bpy.ops.export_scene.gltf(filepath=out_glb, export_format="GLB", use_selection=True, export_image_format="JPEG",
-                          export_jpeg_quality=85, export_yup=True, export_apply=True, export_normals=True)
+                          export_jpeg_quality=88, export_yup=True, export_apply=True)
 print("GLB", os.path.getsize(out_glb))

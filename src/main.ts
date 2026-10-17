@@ -33,7 +33,7 @@ function save(s: Settings) {
 
 const settings = load();
 // 3D-Modelle (Türme, Inhibitoren, Nexus, Startbasis, Champions) gleich beim Start laden, damit Auswahlbilder und Spiel sie nutzen
-const modelsReady = Promise.all([loadGuardian(), loadInhibitor(), loadNexus(), loadStartBase(), loadBaseGround(), loadJungleCamp(), loadTrees(), loadChampionModels()]);
+const modelsReady = Promise.all([loadGuardian(), loadInhibitor(), loadNexus(), loadStartBase(), loadBaseGround(), loadJungleCamp(), loadTrees(settings.quality), loadChampionModels()]);
 const params = new URLSearchParams(location.search);
 let portraits: Record<string, string> | null = null;
 
@@ -193,6 +193,8 @@ function start() {
   const ready = modelsReady;
   setTimeout(async () => {
     await ready;
+    // Wald in der gewählten Grafikstufe (PC: fein, Handy: schnell)
+    await loadTrees(settings.quality);
     navGrid();
     app.innerHTML = `<div class="stage" id="stage"></div><div class="rotate"><div><b>⟲</b><p>Dreh dein Handy ins Querformat</p><button class="mbtn" id="rot-ok">Trotzdem spielen</button></div></div>`;
     const stage = document.getElementById("stage")!;
