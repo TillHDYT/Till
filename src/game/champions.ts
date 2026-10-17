@@ -2,6 +2,10 @@ import type { Champion, Unit } from "./units";
 import type { World } from "./world";
 import { MONSTER_RADIUS, type V2 } from "./mapdata";
 
+/** Blutlache (Malgors und Elaras Q): die Scheibe aus dem GIF spielt 1,3 s, dann bleibt sie noch so lange liegen. */
+const POOL_HOLD = 5;
+const POOL_TIME = 39 / 30 + POOL_HOLD;
+
 export type Role = "top" | "jungle" | "mid" | "bot" | "support";
 export type Targeting = "self" | "dir" | "point" | "unit";
 export type AiUse = "poke" | "fight" | "farm" | "escape" | "engage" | "self" | "heal";
@@ -205,7 +209,7 @@ export const CHAMPIONS: ChampDef[] = [
     abilities: [
       {
         name: "Blutkugel",
-        desc: "Schleudert eine Blutkugel an eine Stelle. Dort entsteht eine Blutlache, die Gegner verletzt und verlangsamt.",
+        desc: "Schleudert eine Blutkugel an eine Stelle. Dort entsteht eine Blutlache, die Gegner verletzt und verlangsamt. Sie bleibt danach noch 5 s liegen und verletzt und verlangsamt Gegner darin leicht.",
         icon: "🔴",
         targeting: "point",
         range: 12,
@@ -228,11 +232,19 @@ export const CHAMPIONS: ChampDef[] = [
             visual: "blood",
             color: 0xff2030,
             onTrigger: (a) => {
-              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c });
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: POOL_HOLD });
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.slow(u, 0.3, 1.5);
               }
+              // die Lache bleibt liegen: wer darin steht, wird leicht verletzt und verlangsamt
+              const ticks = Math.round(POOL_TIME / 0.5);
+              w.zone(c, a.x, a.z, a.radius, POOL_TIME, 0.5, (z) => {
+                for (const u of w.enemiesInRadius(c.team, z.x, z.z, z.radius)) {
+                  w.damage(c, u, (dmg * 0.4) / ticks, "magic", { ability: true });
+                  w.slow(u, 0.2, 0.6);
+                }
+              });
             },
           });
         },
@@ -289,7 +301,7 @@ export const CHAMPIONS: ChampDef[] = [
             visual: "bloodbig",
             color: 0xff2030,
             onTrigger: (a) => {
-              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: 2.2 });
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: 0.9 });
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.slow(u, 0.5, 2);
@@ -543,11 +555,11 @@ export const CHAMPIONS: ChampDef[] = [
     abilities: [
       {
         name: "Mondsegen",
-        desc: "Schießt einen Kometen an eine Stelle. Er platzt am Boden: Verbündete werden geheilt, Gegner verletzt. 5 s lang bleibt ein Heilkreis liegen, der Verbündete darin heilt und Gegner leicht verletzt.",
+        desc: "Schleudert eine Kugel an eine Stelle (wie Malgors Blutkugel). Sie platzt am Boden: Verbündete werden geheilt, Gegner verletzt. Der Kreis bleibt danach noch 5 s liegen, heilt Verbündete darin und verletzt Gegner leicht.",
         icon: "💖",
         targeting: "point",
         range: 12,
-        radius: 3.5,
+        radius: 4.8,
         cd: [11, 10, 9, 8],
         mana: [60, 70, 80, 90],
         ai: "heal",
@@ -555,31 +567,31 @@ export const CHAMPIONS: ChampDef[] = [
           const p = clampAim(c, aim, 12);
           const heal = r4([40, 60, 80, 100], rank) + c.stats.ap * 0.2;
           const dmg = r4([40, 65, 90, 115], rank) + c.stats.ap * 0.3;
-          // im Kreis: so viel insgesamt über 5 s (10 Mal je 0,5 s)
+          // im Kreis: so viel insgesamt, solange er liegt
           const zoneHeal = r4([60, 90, 120, 150], rank) + c.stats.ap * 0.3;
           const zoneDmg = r4([40, 60, 80, 100], rank) + c.stats.ap * 0.25;
-          const R = 3.5;
-          // Flug des Kometen Bild für Bild aus dem Vorlage-GIF (flipfx.ts), so lange wie das Geschoss braucht
-          const delay = Math.max(0.3, Math.hypot(p.x - c.x, p.z - c.z) / 20);
+          const ticks = Math.round(POOL_TIME / 0.5);
+          // Flug und Kreis wie bei Malgors Q Bild für Bild aus dem Vorlage-GIF (flipfx.ts)
+          const delay = 0.93;
           c.anim.cast = 0.4;
-          w.fx({ type: "elq", x: p.x, z: p.z, owner: c, dur: delay });
+          w.fx({ type: "qcast", x: p.x, z: p.z, r: 4.8, owner: c, dur: delay });
           w.area(c, {
             x: p.x,
             z: p.z,
-            radius: R,
+            radius: 4.8,
             delay,
-            visual: "comet",
+            visual: "blood",
             color: 0x7dff8a,
             onTrigger: (a) => {
-              w.fx({ type: "elzone", x: a.x, z: a.z, r: R, owner: c, dur: 5 });
-              for (const u of w.alliesInRadius(c.team, a.x, a.z, R)) {
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: POOL_HOLD });
+              for (const u of w.alliesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.heal(u, heal);
                 w.fx({ type: "heal", x: u.x, z: u.z, owner: u });
               }
-              for (const u of w.enemiesInRadius(c.team, a.x, a.z, R)) w.damage(c, u, dmg, "magic", { ability: true });
-              w.zone(c, a.x, a.z, R, 5, 0.5, (z) => {
-                for (const u of w.alliesInRadius(c.team, z.x, z.z, R)) w.heal(u, zoneHeal / 10);
-                for (const u of w.enemiesInRadius(c.team, z.x, z.z, R)) w.damage(c, u, zoneDmg / 10, "magic", { ability: true });
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) w.damage(c, u, dmg, "magic", { ability: true });
+              w.zone(c, a.x, a.z, a.radius, POOL_TIME, 0.5, (z) => {
+                for (const u of w.alliesInRadius(c.team, z.x, z.z, z.radius)) w.heal(u, zoneHeal / ticks);
+                for (const u of w.enemiesInRadius(c.team, z.x, z.z, z.radius)) w.damage(c, u, zoneDmg / ticks, "magic", { ability: true });
               });
             },
           });

@@ -1,14 +1,10 @@
 import * as THREE from "three";
 import boltAddUrl from "../assets/fx/elara_aa_add.jpg";
 import boltMulUrl from "../assets/fx/elara_aa_mul.jpg";
-import cometAddUrl from "../assets/fx/elara_comet_add.jpg";
-import cometMulUrl from "../assets/fx/elara_comet_mul.jpg";
 import orbAddUrl from "../assets/fx/elara_e_add.jpg";
 import orbMulUrl from "../assets/fx/elara_e_mul.jpg";
 import orbBurstAddUrl from "../assets/fx/elara_eburst_add.jpg";
 import orbBurstMulUrl from "../assets/fx/elara_eburst_mul.jpg";
-import zoneAddUrl from "../assets/fx/elara_zone_add.jpg";
-import zoneMulUrl from "../assets/fx/elara_zone_mul.jpg";
 import qDiscAddUrl from "../assets/fx/q_disc_add.jpg";
 import qDiscMulUrl from "../assets/fx/q_disc_mul.jpg";
 import qFlightAddUrl from "../assets/fx/q_flight_add.jpg";
@@ -29,18 +25,15 @@ const DISC = { frames: 39, cols: 7, rows: 6, half: 128.75 };
  * danach laufen die liegenbleibenden Reste aus. len = so lang (Welt-Einheiten) ist die Bahn bei ungestreckter Darstellung.
  */
 type ShotSpec = { add: string; mul: string; frames: number; cols: number; rows: number; u0: number; u1: number; v0: number; v1: number; L: number; arrive: number; len: number; fps: number; y: number };
-// Elaras Q-Flug: lila Komet (assets-src/qeffect/cut_support.py)
-export const COMET: ShotSpec = { add: cometAddUrl, mul: cometMulUrl, frames: 30, cols: 3, rows: 10, u0: -50, u1: 375.76, v0: -55, v1: 55, L: 369.76, arrive: 15, len: 11, fps: FPS, y: 1.1 };
 // Elaras Grundangriff: grüner Blitz aus „Neeko Auto Attack“ (assets-src/qeffect/cut_elara2.py), 25 Bilder je Sekunde
 export const BOLT: ShotSpec = { add: boltAddUrl, mul: boltMulUrl, frames: 19, cols: 3, rows: 7, u0: -20, u1: 377.118, v0: -75, v1: 75, L: 302.118, arrive: 8, len: 11, fps: 25, y: 1.1 };
 // Elaras E: blaue Kugel mit Spur (cut_elara2.py); den Sternplatzer am Ende zeigt orbBurst
 export const ORB: ShotSpec = { add: orbAddUrl, mul: orbMulUrl, frames: 15, cols: 4, rows: 4, u0: -10, u1: 370.451, v0: -60, v1: 60, L: 350.451, arrive: 15, len: 12, fps: FPS, y: 1.0 };
 const ORB_BURST = { frames: 16, cols: 4, rows: 4, half: 95, r: 60 };
-// Heilkreis der Q: grüner Wirbelring mit goldenen Funken (cut_elara2.py); Ringradius 52 Pixel, nach dem Aufblitzen
-// (Bilder 0-6) bleibt Bild 6 langsam drehend liegen, am Ende verglimmt er (Bilder 6-24)
-const ZONE = { frames: 25, cols: 5, rows: 5, half: 80, ring: 52, hold: 6 };
-/** In der Scheibe läuft diese Bildfolge in Schleife, wenn sie länger liegen bleiben soll als im GIF. */
-const DISC_LOOP: [number, number] = [12, 33];
+/** So lange spielt die Scheibe bis zum Ende des GIFs; danach bleibt sie mit den Schmetterlingen liegen (qDisc hold). */
+export const DISC_TIME = DISC.frames / FPS;
+/** Beim Liegenbleiben läuft dieser Endteil (Schmetterlinge am Boden) vor und zurück. */
+const DISC_HOLD = 24;
 
 const loader = new THREE.TextureLoader();
 const tex = new Map<string, THREE.Texture>();
@@ -112,7 +105,7 @@ export class FlipFx {
 
   constructor() {
     // Bildtafeln gleich laden, damit der erste Wurf nicht stockt
-    for (const u of [qDiscAddUrl, qDiscMulUrl, qFlightAddUrl, qFlightMulUrl, boltAddUrl, boltMulUrl, cometAddUrl, cometMulUrl, orbAddUrl, orbMulUrl, orbBurstAddUrl, orbBurstMulUrl, zoneAddUrl, zoneMulUrl]) load(u);
+    for (const u of [qDiscAddUrl, qDiscMulUrl, qFlightAddUrl, qFlightMulUrl, boltAddUrl, boltMulUrl, orbAddUrl, orbMulUrl, orbBurstAddUrl, orbBurstMulUrl]) load(u);
   }
 
   private add(geo: THREE.BufferGeometry, mul: THREE.ShaderMaterial, addM: THREE.ShaderMaterial, order: number, depthTest: boolean, dur: number, frame: (t: number) => number, fade: (t: number) => number): Flip {
@@ -129,7 +122,7 @@ export class FlipFx {
   }
 
   /**
-   * Geschoss-Band von from nach to (spec: COMET, BOLT oder ORB). Solange es fliegt, setzt der Aufrufer den Fortschritt
+   * Geschoss-Band von from nach to (spec: BOLT oder ORB). Solange es fliegt, setzt der Aufrufer den Fortschritt
    * (0..1); danach (release) laufen die liegenbleibenden Reste in Originalgeschwindigkeit aus. Mit auto läuft der
    * Fortschritt von selbst in so vielen Sekunden ab.
    */
@@ -192,33 +185,6 @@ export class FlipFx {
     );
   }
 
-  /** Heilkreis von Elaras Q: blitzt auf, bleibt dur Sekunden langsam drehend liegen und verglimmt dann. */
-  zone(at: THREE.Vector3, radius: number, dur: number) {
-    const s = radius / ZONE.ring;
-    const h = ZONE.half * s;
-    const geo = quad(new THREE.Vector3(), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1), -h, h, -h, h);
-    const fps = 25;
-    const intro = ZONE.hold / fps;
-    const outro = (ZONE.frames - 1 - ZONE.hold) / fps;
-    const total = dur + outro;
-    const it = this.add(
-      geo,
-      flipMaterial(zoneMulUrl, ZONE.cols, ZONE.rows, "mul"),
-      flipMaterial(zoneAddUrl, ZONE.cols, ZONE.rows, "add"),
-      4,
-      true,
-      total,
-      (t) => {
-        for (const m of it.meshes) m.rotation.y = -t * 0.6;
-        if (t < intro) return Math.floor(t * fps);
-        if (t < dur) return ZONE.hold;
-        return Math.min(ZONE.frames - 1, ZONE.hold + Math.floor((t - dur) * fps));
-      },
-      (t) => (t < intro || t >= dur ? 1 : 1 + 0.15 * Math.sin(t * 4)),
-    );
-    for (const m of it.meshes) m.position.set(at.x, at.y + 0.12, at.z);
-  }
-
   /**
    * Flug der Blutkugel vom Werfer (from) zur Zielstelle (to), Dauer dur Sekunden; radius = Radius der Scheibe in
    * Welt-Einheiten (legt den Maßstab fest). Die Spur wird in Flugrichtung gestreckt, damit sie beim Werfer beginnt.
@@ -246,20 +212,22 @@ export class FlipFx {
     );
   }
 
-  /** Scheibe am Aufschlag (Radius in Welt-Einheiten); dur länger als im GIF: der Mittelteil läuft in Schleife. */
-  qDisc(at: THREE.Vector3, radius: number, dur = DISC.frames / FPS) {
+  /**
+   * Scheibe am Aufschlag (Radius in Welt-Einheiten): spielt das GIF bis zum Ende und bleibt dann noch hold Sekunden
+   * liegen; dabei laufen die letzten Bilder (Schmetterlinge am Boden) vor und zurück, am Schluss verblasst sie.
+   */
+  qDisc(at: THREE.Vector3, radius: number, hold = 0) {
     const s = radius / DISC_R_PX;
     const h = DISC.half * s;
     const T = new THREE.Vector3(at.x, at.y + 0.12, at.z);
     const geo = quad(T, new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1), -h, h, -h, h);
-    const natural = DISC.frames / FPS;
-    const tail = (DISC.frames - DISC_LOOP[1]) / FPS;
+    const last = DISC.frames - 1;
+    const len = last - DISC_HOLD;
+    const dur = DISC_TIME + hold;
     const frame = (t: number) => {
-      const f = t * FPS;
-      if (dur <= natural || t < DISC_LOOP[1] / FPS) return Math.min(DISC.frames - 1, Math.floor(f));
-      if (t > dur - tail) return Math.min(DISC.frames - 1, DISC_LOOP[1] + Math.floor((t - (dur - tail)) * FPS));
-      const len = DISC_LOOP[1] - DISC_LOOP[0];
-      return DISC_LOOP[0] + (Math.floor(f - DISC_LOOP[0]) % len);
+      if (t < DISC_TIME) return Math.min(last, Math.floor(t * FPS));
+      const k = Math.floor((t - DISC_TIME) * FPS * 0.5) % (2 * len);
+      return k < len ? last - k : DISC_HOLD + (k - len);
     };
     this.add(
       geo,
@@ -269,7 +237,7 @@ export class FlipFx {
       true,
       dur,
       frame,
-      (t) => Math.min(1, (dur - t) / 0.15),
+      (t) => Math.min(1, (dur - t) / (hold > 0 ? 0.5 : 0.15)),
     );
   }
 

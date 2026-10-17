@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { applyCameraCut } from "./camcut";
-import { BOLT, COMET, FlipFx, ORB } from "./flipfx";
+import { BOLT, FlipFx, ORB } from "./flipfx";
 import { BreathFx } from "./breath";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
@@ -931,13 +931,6 @@ export class View {
         }
       }
     }
-    // Elaras Heilkreis: goldene Funken schweben darin auf
-    for (const z of w.zones) {
-      if (Math.random() > 0.5 || !(z.team === this.playerTeam || this.fogVisibleAt(z.x, z.z))) continue;
-      const ang = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * z.radius;
-      this.particles.emit(z.x + Math.cos(ang) * r, g.groundAt(z.x, z.z) + 0.2, z.z + Math.sin(ang) * r, Math.cos(ang + 1.6) * 0.5, 0.8 + Math.random() * 0.8, Math.sin(ang + 1.6) * 0.5, new THREE.Color(Math.random() < 0.7 ? 0xffd860 : 0x9dffa0), 0.35, 1.1, 0);
-    }
     for (const [id, v] of this.areas) {
       if (live.has(id)) continue;
       this.scene.remove(v.ring, v.disc);
@@ -955,7 +948,7 @@ export class View {
       return m;
     };
     // Blutkugel: keine Vorschau am Boden (wie im Vorbild), die Lache erscheint erst beim Aufschlag
-    const hidden = a.visual === "blood" || a.visual === "comet";
+    const hidden = a.visual === "blood";
     const ring = mk(new THREE.RingGeometry(0.93, 1, 48), hidden ? 0 : 0.9);
     const disc = mk(new THREE.CircleGeometry(1, 40), hidden ? 0 : 0.3);
     let meteor: THREE.Object3D | null = null;
@@ -1002,13 +995,6 @@ export class View {
         case "qcast":
           // Malgors Blutkugel: Flug Bild für Bild aus dem Vorlage-GIF
           if (f.owner) this.flip.qFlight(new THREE.Vector3(f.owner.x, g.groundAt(f.owner.x, f.owner.z), f.owner.z), new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur ?? 0.93);
-          break;
-        case "elq":
-          // Elaras Q: lila Komet Bild für Bild aus dem Vorlage-GIF, landet nach dur Sekunden
-          if (f.owner) this.flip.shot(COMET, new THREE.Vector3(f.owner.x, g.groundAt(f.owner.x, f.owner.z), f.owner.z), new THREE.Vector3(f.x, y, f.z), f.dur ?? 0.5);
-          break;
-        case "elzone":
-          this.flip.zone(new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur ?? 5);
           break;
         case "qdisc":
           this.flip.qDisc(new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur);

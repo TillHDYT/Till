@@ -2,7 +2,6 @@
 Bild in einer Bildtafel).
 
 - Grundangriff (Neeko Auto Attack, grüner Blitz): Band vom Abwurf bis zum Einschlag, Bilder 14-32, Einschlag in Bild 22
-- Heilkreis der Q (gleiches GIF, grüner Wirbelring mit goldenen Funken): Quadrat um den Einschlag, Bilder 22-46
 - E (blaue Kugel mit Spur): Band entlang der Flugbahn, Bilder 26-40, Sternplatzer am Ende (Bilder 41, 0-14) als Quadrat
 
 Aufruf: python3 cut_elara2.py neeko.gif kugel.gif <ausgabe-ordner>
@@ -96,7 +95,7 @@ def save(cells, cols, out, name, meta):
 
 neeko, kugel, out = sys.argv[1], sys.argv[2], sys.argv[3]
 
-# --- Neeko: grüner Blitz und Heilkreis ---
+# --- Neeko: grüner Blitz ---
 fr = load(neeko)
 H, W = fr.shape[1:3]
 bg = np.median(fr, axis=0)
@@ -107,8 +106,6 @@ keep[195:, :275] = 0  # ihr Schatten
 S, HIT = np.array([250.0, 168.0]), np.array([520.0, 290.0])
 cells, m = band(fr, bg, keep, range(14, 33), S, HIT, -20.0, lambda L: L + 75, 75.0, 320, 120)
 save(cells, 3, out, "elara_aa", {**m, "arrive": 22 - 14})
-cells, m = square(fr, bg, keep, range(22, 47), HIT, 80.0, 66.0, 160)
-save(cells, 5, out, "elara_zone", {**m, "ring": 52})
 
 # --- blaue Kugel ---
 fr = load(kugel)

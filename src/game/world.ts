@@ -48,9 +48,7 @@ export type FxKind =
   | "shield"
   | "gold"
   | "qcast"
-  | "qdisc"
-  | "elq"
-  | "elzone";
+  | "qdisc";
 
 export type Fx = { type: FxKind; x: number; z: number; r?: number; color?: number; owner?: Unit; dur?: number; big?: boolean };
 
@@ -112,7 +110,7 @@ export type Area = {
   done: boolean;
 };
 
-/** Fläche, die eine Weile liegen bleibt und in festen Abständen wirkt (Elaras Heilkreis). */
+/** Fläche, die eine Weile liegen bleibt und in festen Abständen wirkt (Blutlache von Malgor, Heilkreis von Elara). */
 export type Zone = { id: number; owner: Unit; team: Side; x: number; z: number; radius: number; t0: number; until: number; next: number; tick: number; onTick: (z: Zone) => void };
 
 type Dot = { target: Unit; src: Unit; dps: number; until: number };
@@ -1938,7 +1936,7 @@ export class World {
         a.done = true;
         a.onTrigger(a);
         // Blutlachen (Malgor) bringen ihren eigenen Effekt mit
-        if (a.visual !== "blood" && a.visual !== "bloodbig" && a.visual !== "comet") this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
+        if (a.visual !== "blood" && a.visual !== "bloodbig") this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
         this.events.push({ type: "sound", name: a.visual === "meteor" ? "meteor" : "boom", x: a.x, z: a.z });
       }
     }
