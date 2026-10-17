@@ -320,6 +320,11 @@ export class NavGrid {
     for (let i = 0; i < n * n; i++) {
       if (!this.walk[i]) this.river[i] = 0;
       this.river[i] *= 1 - smooth(0.15, 0.6, this.lane[i]);
+      // wie auf der Kluft: an der Mid-Lane läuft der Fluss flach aus (trockenes Flussbett statt Wasserwand)
+      const mx = (i % n) + 0.5;
+      const mz = Math.floor(i / n) + 0.5;
+      const dm = distToPolyline({ x: mx, z: mz }, LANES.mid) + (fbm(mx * 0.08 + 21, mz * 0.08) - 0.5) * 9;
+      this.river[i] *= smooth(LANE_WIDTH.mid / 2 + 6, LANE_WIDTH.mid / 2 + 30, dm);
     }
 
     // Büsche: begehbar, merken pro Zelle.

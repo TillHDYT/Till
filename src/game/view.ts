@@ -3,7 +3,7 @@ import { applyCameraCut } from "./camcut";
 import { FlipFx } from "./flipfx";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
-import { FOUNTAIN, MAP, type V2 } from "./mapdata";
+import { FOUNTAIN, MAP, RIVER_BRAZIERS, type V2 } from "./mapdata";
 import {
   TEAM_COLOR,
   TEAM_GLOW,
@@ -148,6 +148,16 @@ export class View {
           this.braziers.push({ x: bx, z: bz, y: b.root.position.y + b.fireY, glow: b.glow, flame: b.flame, phase: Math.random() * 6 });
         }
       }
+    }
+
+    // Feuerschalen an den Flussmündungen der Mid-Lane, auf den Mauerecken (etwas größer als in der Basis)
+    for (const p of RIVER_BRAZIERS) {
+      const b = buildBrazier();
+      b.root.scale.setScalar(1.35);
+      b.root.position.set(p.x, world.grid.groundAt(p.x, p.z) - 0.1, p.z);
+      applyCameraCut(b.root);
+      scene.add(b.root);
+      this.braziers.push({ x: p.x, z: p.z, y: b.root.position.y + b.fireY * 1.35, glow: b.glow, flame: b.flame, phase: Math.random() * 6, size: 1.35 });
     }
 
     for (const c of world.champs) {

@@ -274,8 +274,8 @@ function groundMask(grid: NavGrid, res: number) {
       const sd = grid.sdAt(x, z);
       const wall = sstep(0.2, -0.6, sd);
       const grass = (1 - sstep(0.12, 0.55, lane + jit)) * (1 - sstep(0.0, 0.3, river + jit * 0.5)) * (1 - sstep(0.1, 0.5, base));
-      // Fuß der Wände etwas dunkler, oben auf dem Wald dunkler Waldboden
-      let shade = 0.74 + 0.26 * sstep(0, 2.5, sd);
+      // Fuß der Wände: weicher, breiter Schatten (wie auf der Kluft), oben auf dem Wald dunkler Waldboden
+      let shade = 0.6 + 0.4 * sstep(0, 4.5, sd + jit * 2);
       shade = shade * (1 - wall) + 0.5 * wall;
       shade *= 0.9 + fbm(x * 0.06 + 11, z * 0.06) * 0.2;
       // Böden der Camps: Erdboden (Wegtextur) mit unregelmäßigem Rand, etwas dunkler zur Mitte
@@ -287,12 +287,16 @@ function groundMask(grid: NavGrid, res: number) {
         pitFloor = Math.max(pitFloor, 1 - sstep(r * 0.7, r * 0.95, d));
         shade *= 0.82 + 0.18 * sstep(0, r, d);
       }
+      // Dschungelwege: Erde mit Steinplatten in der Mitte der Gänge, läuft von den Lanes in den Dschungel hinein;
+      // zu den Mauern hin wieder Gras (wie auf der Kluft statt Gras bis an die Kante)
+      const trail = sstep(2.4, 4.6, sd + (fbm(x * 0.09 + 7, z * 0.09 + 3) - 0.5) * 3.2 + jit * 2);
+      const dirt = trail * (1 - sstep(0.05, 0.35, river)) * (1 - sstep(0.1, 0.5, base)) * (1 - wall) * 0.9;
       const o = (py * res + px) * 4;
-      data[o] = Math.round(Math.max(0, Math.min(1, grass * (1 - pitFloor))) * 255);
+      data[o] = Math.round(Math.max(0, Math.min(1, grass * (1 - pitFloor) * (1 - dirt))) * 255);
       data[o + 1] = Math.round(Math.max(0, Math.min(1, shade)) * 255);
       // B: Weg (Lane), A: Steinboden der Basis
       const laneW = sstep(0.2, 0.6, lane + jit * 0.8) * (1 - sstep(0.1, 0.5, base)) * (1 - sstep(0.15, 0.5, river));
-      data[o + 2] = Math.round(Math.max(laneW * (1 - wall), pitFloor) * 255);
+      data[o + 2] = Math.round(Math.max(laneW * (1 - wall), pitFloor, dirt) * 255);
       data[o + 3] = Math.round(sstep(0.15, 0.75, base + jit * 0.9) * 255);
     }
   }

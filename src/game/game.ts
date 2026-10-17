@@ -240,7 +240,10 @@ export class Game {
     const aspect = window.innerWidth / window.innerHeight;
     // Mindestens ~30 Einheiten Breite auch im Hochformat
     const portrait = aspect < 1 ? 1 / Math.max(0.45, aspect) : 1;
-    const pf = Math.min(1.9, portrait);
+    // Handy: Kamera näher, damit Champions und Geschehen gut erkennbar sind (kurze Bildschirmseite unter 700 px)
+    const short = Math.min(window.innerWidth, window.innerHeight);
+    const mobile = short < 700 || matchMedia("(pointer: coarse)").matches;
+    const pf = Math.min(1.9, portrait) * (mobile ? 0.66 : 1);
     // Zoom stufenlos nachführen (im Logarithmus, damit jeder Mausrad-Schritt gleich wirkt)
     this.input.zoom = Math.max(this.minZoom(p.height, pf), this.input.zoom);
     this.zoomS = Math.exp(Math.log(this.zoomS) + (Math.log(this.input.zoom) - Math.log(this.zoomS)) * (1 - Math.exp(-dt / 0.1)));

@@ -208,7 +208,7 @@ export const CHAMPIONS: ChampDef[] = [
         icon: "🔴",
         targeting: "point",
         range: 12,
-        radius: 3.5,
+        radius: 4.8,
         cd: [7, 6.5, 6, 5.5],
         mana: [50, 55, 60, 65],
         ai: "poke",
@@ -218,11 +218,11 @@ export const CHAMPIONS: ChampDef[] = [
           // Flug und Scheibe sind Bild für Bild aus dem Vorlage-GIF (flipfx.ts); dort landet die Kugel nach 0,93 s
           const delay = 0.93;
           c.anim.atk = 1;
-          w.fx({ type: "qcast", x: p.x, z: p.z, r: 3.5, owner: c, dur: delay });
+          w.fx({ type: "qcast", x: p.x, z: p.z, r: 4.8, owner: c, dur: delay });
           w.area(c, {
             x: p.x,
             z: p.z,
-            radius: 3.5,
+            radius: 4.8,
             delay,
             visual: "blood",
             color: 0xff2030,

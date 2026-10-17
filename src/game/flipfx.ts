@@ -8,7 +8,8 @@ import qFlightMulUrl from "../assets/fx/q_flight_mul.jpg";
 
 // Effekte als Daumenkino: Bild für Bild aus dem Vorlage-GIF ausgeschnitten (assets-src/qeffect/cut.py).
 // Jedes Bild hat zwei Schichten: Schatten (wird mit dem Boden multipliziert) und Licht (wird addiert).
-// Boden * Schatten + Licht ergibt genau das Bild aus dem GIF, nur auf unserem Boden.
+// Boden * Schatten + Licht ergibt das Bild aus dem GIF, nur auf unserem Boden (beide Schichten etwas verstärkt,
+// damit der Effekt im Spiel kräftiger wirkt).
 
 const FPS = 1000 / 30;
 // Maße aus cut.py (Pixel im entzerrten GIF; die Scheibe hat dort den Außenradius 103)
@@ -58,7 +59,7 @@ function flipMaterial(url: string, cols: number, rows: number, mode: "mul" | "ad
         float row = floor(uFrame / uGrid.x);
         vec2 cell = vec2((vUv.x + col) / uGrid.x, (vUv.y + uGrid.y - 1.0 - row) / uGrid.y);
         vec3 c = texture2D(uMap, cell).rgb;
-        ${mode === "mul" ? "gl_FragColor = vec4(mix(vec3(1.0), c, uFade), 1.0);" : "gl_FragColor = vec4(c * uFade, 1.0);"}
+        ${mode === "mul" ? "gl_FragColor = vec4(mix(vec3(1.0), pow(c, vec3(1.3)), uFade), 1.0);" : "gl_FragColor = vec4(c * uFade * 1.5, 1.0);"}
       }`,
   });
   if (mode === "mul") {

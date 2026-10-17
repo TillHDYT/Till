@@ -97,6 +97,12 @@ export const MONSTER_SIZE = 2;
 /** Trefferzone (Radius) der Dschungelmonster wächst mit, damit niemand im Modell steht. */
 export const MONSTER_RADIUS = 1.5;
 
+/** Feuerschalen auf den Mauerecken, wo der Fluss an die Mid-Lane stößt (wie auf der Kluft), Rot gespiegelt. */
+export const RIVER_BRAZIERS: V2[] = [
+  { x: (149 * MAP) / 300, z: (130 * MAP) / 300 },
+  { x: (131 * MAP) / 300, z: (148 * MAP) / 300 },
+].flatMap((p) => [p, mirror(p)]);
+
 export const DRAGON_POS = lol(9866, 4414);
 export const BARON_POS = mirror(DRAGON_POS);
 const SCUTTLE_POS = lol(10500, 5170);
