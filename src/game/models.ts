@@ -45,6 +45,8 @@ import warrokIdleUrl from "../assets/models/Warrok_Idle.glb";
 import warrokAttack1Url from "../assets/models/Warrok_Attack1.glb";
 import warrokAttack2Url from "../assets/models/Warrok_Attack2.glb";
 import warrokDeathUrl from "../assets/models/Warrok_Death.glb";
+import baronUrl from "../assets/models/Baron.glb";
+import redBuffUrl from "../assets/models/RedBuff.glb";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -163,7 +165,8 @@ const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUr
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
 /** fremd: Animation eines anderen Modells mit gleichem Skelett; ihre Hüfthöhe wird an dieses Modell angepasst. */
 /** spiegeln: Animation seitenverkehrt abspielen (linke und rechte Knochen getauscht, z. B. derselbe Stich mit dem anderen Arm). */
-type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean; rate?: number };
+/** clip: Name der Animation in der Datei (sonst die erste) */
+type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spiegeln?: boolean; rate?: number; clip?: string };
 /** fist: Fingerhaltung (erstes Bild) für Laufen, Stehen und Schläge, z. B. eine geschlossene Faust um eine Waffe. */
 /** attack3: dritter Schlag; order: feste Reihenfolge der Schläge (Indizes in [attack, attack2, attack3]) statt Wechsel
  *  nach Zufall. casts: Animation je Fähigkeit (Q, W, E, R), rate = Abspieltempo. */
@@ -224,18 +227,39 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
   },
 };
 /** Dschungelmonster mit eigenem 3D-Modell (Schlüssel "monster:<Art>", nur das große Monster des Camps). */
-const MONSTER_MODELS: Record<string, string> = { "monster:blue": warrokUrl };
+const MONSTER_MODELS: Record<string, string> = { "monster:blue": warrokUrl, "monster:red": redBuffUrl, "monster:baron": baronUrl };
+// Red Buff: Waldmonster mit Baum auf dem Rücken („Forest Monster“ von CDmir, CC0), alle Animationen in einer Datei
+const RED_SRC = "src/assets/models/RedBuff.glb (aus forest-monster-final.blend, assets-src/monster_blend.py)";
+CHAMP_ANIMS["monster:red"] = {
+  run: { url: redBuffUrl, file: RED_SRC, clip: "Walk" },
+  idle: { url: redBuffUrl, file: RED_SRC, clip: "Idle" },
+  attack: { url: redBuffUrl, file: RED_SRC, clip: "Attack" },
+  death: { url: redBuffUrl, file: RED_SRC, clip: "Dying" },
+};
+// Baron: fliegendes Auge mit Flügeln („Stalker“), alle Animationen in einer Datei
+const BARON_SRC = "src/assets/models/Baron.glb (aus barron_auge.zip / stalker.blend, assets-src/monster_blend.py)";
+CHAMP_ANIMS["monster:baron"] = {
+  run: { url: baronUrl, file: BARON_SRC, clip: "walk" },
+  idle: { url: baronUrl, file: BARON_SRC, clip: "wait" },
+  attack: { url: baronUrl, file: BARON_SRC, clip: "attack_02" },
+  attack2: { url: baronUrl, file: BARON_SRC, clip: "attack" },
+  death: { url: baronUrl, file: BARON_SRC, clip: "die" },
+};
 CHAMP_ANIMS["monster:blue"] = {
   idle: { url: warrokIdleUrl, file: "src/assets/models/Warrok_Idle.glb (aus Jungle Monster Animation stehend.fbx)" },
   attack: { url: warrokAttack1Url, file: "src/assets/models/Warrok_Attack1.glb (aus Jungle Monster 1.SchlagAnimation.fbx)" },
   attack2: { url: warrokAttack2Url, file: "src/assets/models/Warrok_Attack2.glb (aus Jungle Monster 2.SchlagAnimation.fbx)" },
   death: { url: warrokDeathUrl, file: "src/assets/models/Warrok_Death.glb (aus Jungle Monster Sterbe Animation.fbx)" },
 };
+/** Monster, deren Maße in der Stehhaltung gemessen werden (Blender-Modelle, deren Animationen die Figur verschieben). */
+const POSED_BOX = new Set(["monster:red", "monster:baron"]);
+/** So hoch schwebt ein fliegendes Monster über dem Boden (Spieleinheiten vor MONSTER_SIZE). */
+const MONSTER_LIFT: Record<string, number> = { "monster:baron": 1.2 };
 /** Höhe der Monster-Modelle im Spiel. */
 // Warrok steht gebückt, daher größer als die Höhe in der Grundhaltung
-const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6 };
+const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6, "monster:red": 4.8, "monster:baron": 6.5 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
-const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, varok: 7, "monster:blue": 5 };
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, varok: 7, "monster:blue": 5, "monster:red": 4.5, "monster:baron": 4 };
 
 type RigAsset = {
   scene: THREE.Object3D;
@@ -354,12 +378,15 @@ function mirrorClip(clip: THREE.AnimationClip) {
   return new THREE.AnimationClip(`${clip.name}_gespiegelt`, clip.duration, tracks);
 }
 
+/** Animationsdateien nur einmal laden (mehrere Animationen können aus derselben Datei kommen) */
+const clipFiles = new Map<string, Promise<{ animations: THREE.AnimationClip[] }>>();
 async function loadExtraClip(src: AnimSrc | undefined, id: string, what: string) {
   if (!src) return null;
   try {
-    const gltf = await loadGlbOffline(src.url);
-    const clip = gltf.animations[0];
-    if (!clip) throw new Error("keine Animation in der Datei");
+    if (!clipFiles.has(src.url)) clipFiles.set(src.url, loadGlbOffline(src.url));
+    const gltf = await clipFiles.get(src.url)!;
+    const clip = src.clip ? gltf.animations.find((a) => a.name === src.clip) : gltf.animations[0];
+    if (!clip) throw new Error(`keine Animation ${src.clip ?? ""} in der Datei`);
     return src.spiegeln ? mirrorClip(clipFromZero(clip)) : clipFromZero(clip);
   } catch (err) {
     console.error(`${what}-Animation für Champion ${id} konnte nicht geladen werden: ${src.file}`, err);
@@ -500,6 +527,8 @@ export async function loadChampionModels() {
         // Mixamo-Modellen anders liegen als die Haltung im Spiel
         // (nur bei Laufanimation aus einem anderen Modell; die übrigen Modelle bleiben bei ihren abgestimmten Maßen)
         let box = new THREE.Box3().setFromObject(gltf.scene);
+        // Monster aus Blender: Maße in der Stehhaltung (die Animationen können die ganze Figur verschieben, z. B. fliegen)
+        if (POSED_BOX.has(id) && idle) box = new THREE.Box3().setFromObject(posed(cloneSkinned(gltf.scene), idle), true);
         if (extras.some(([c, src]) => c && src?.fremd)) {
           const probe = cloneSkinned(gltf.scene);
           if (run) box = new THREE.Box3().setFromObject(posed(probe, clip), true);
@@ -786,6 +815,7 @@ export function buildRigMonster(kind: CampKind, big: boolean): { root: THREE.Gro
   if (!asset) return null;
   const root = new THREE.Group();
   const { model, rig } = buildRig(asset, (MONSTER_HEIGHT[id] ?? 3) * MONSTER_SIZE);
+  model.position.y += (MONSTER_LIFT[id] ?? 0) * MONSTER_SIZE;
   root.add(model);
   return { root, glow: null, rig };
 }
