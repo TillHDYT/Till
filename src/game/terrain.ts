@@ -4,7 +4,8 @@ import { addCutUniforms } from "./camcut";
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, CAMP_PIT, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { campDist, campShape, fbm, noise2, rng, type NavGrid } from "./navgrid";
-import { TREE_ASSETS } from "./treeAssets";
+import { TREE_ASSETS, WALL_ASSET } from "./treeAssets";
+import { buildWallGeometry } from "./walls";
 import grassUrl from "../assets/grass.jpg";
 import leavesUrl from "../assets/leaves.png";
 import pathUrl from "../assets/path.jpg";
@@ -981,7 +982,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       const z = gz + rand() * step;
       const sd = grid.sdAt(x, z);
       if (sd > -1.1) continue;
-      if (rocky(x, z)) continue;
+      // ohne Mauer-Modell: Felswände am Fluss statt Wald
+      if (!WALL_ASSET.asset && rocky(x, z)) continue;
       if (FOUNTAIN.some((f) => Math.hypot(f.x - x, f.z - z) < 13)) continue;
       // Basismauer: nur Stein, keine Bäume
       if (grid.base[Math.min(grid.n - 1, Math.floor(z)) * grid.n + Math.min(grid.n - 1, Math.floor(x))] >= 0) continue;
@@ -1065,6 +1067,33 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     }
   }
 
+  // Dschungelwände: Mauerstück entlang jeder Wandkante gebogen (walls.ts); nicht an der Basis und an den Camp-Modellen
+  const wallAsset = WALL_ASSET.asset;
+  if (wallAsset) {
+    const { geos, pieces, length } = buildWallGeometry(grid, wallAsset, (x, z) => {
+      for (let dz = -3; dz <= 3; dz += 3)
+        for (let dx = -3; dx <= 3; dx += 3) {
+          const cx = Math.floor(x + dx);
+          const cz = Math.floor(z + dz);
+          if (cx >= 0 && cz >= 0 && cx < grid.n && cz < grid.n && grid.base[cz * grid.n + cx] >= 0) return true;
+        }
+      return grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.r * 0.85);
+    });
+    const mat = new THREE.MeshLambertMaterial({ map: wallAsset.map ?? undefined, color: new THREE.Color(2.0, 2.0, 2.0) });
+    if (mat.map) {
+      mat.map.colorSpace = THREE.SRGBColorSpace;
+      mat.map.anisotropy = 4;
+    }
+    fog.patch(mat, cutPatch, "wall");
+    for (const geo of geos) {
+      const wm = new THREE.Mesh(geo, mat);
+      wm.castShadow = high;
+      wm.receiveShadow = true;
+      group.add(wm);
+    }
+    console.info(`Mauern: ${pieces} Stücke, ${length} Einheiten Wandkante`);
+  }
+
   // Felsbrocken an den Felswänden und im Wald
   const rockMat = new THREE.MeshLambertMaterial({ map: texture(rockUrl, true), vertexColors: true });
   fog.patch(rockMat);
@@ -1106,7 +1135,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       riverRocks[rand() < 0.5 ? 0 : 1][chunkOf(x, z)].push(m);
     }
   }
-  boulders.forEach((geo, k) => {
+  // mit dem Mauer-Modell keine eigenen Felsbrocken mehr (nur die Modelle sollen den Wald bilden)
+  if (!wallAsset) boulders.forEach((geo, k) => {
     for (const [list, mat] of [...rockBuckets[k].map((l) => [l, rockMat] as const), ...riverRocks[k].map((l) => [l, riverRockMat] as const)]) {
       if (!list.length) continue;
       const im = new THREE.InstancedMesh(geo, mat, list.length);

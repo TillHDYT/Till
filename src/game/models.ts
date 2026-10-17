@@ -17,7 +17,8 @@ import baseGroundUrl from "../assets/basemodel.glb";
 import jgCampUrl from "../assets/jgcamp.glb";
 import treeUrl from "../assets/tree.glb";
 import treeGroupUrl from "../assets/treegroup.glb";
-import { TREE_ASSETS } from "./treeAssets";
+import wallUrl from "../assets/wall.glb";
+import { TREE_ASSETS, WALL_ASSET } from "./treeAssets";
 import assassinUrl from "../assets/models/Assassine.glb";
 import elaraUrl from "../assets/models/Elara.glb";
 import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
@@ -2192,6 +2193,14 @@ export async function loadTrees(): Promise<boolean> {
       list.push({ geo, map, height: geo.boundingBox!.max.y });
     }
     TREE_ASSETS.list = list;
+    const wm = (await loadGlbOffline(wallUrl)).scene.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
+    if (wm) {
+      wm.updateWorldMatrix(true, false);
+      const geo = wm.geometry.clone().applyMatrix4(wm.matrixWorld);
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      WALL_ASSET.asset = { geo, map: (wm.material as THREE.MeshStandardMaterial).map, length: bb.max.x - bb.min.x, depth: -bb.min.z, height: bb.max.y };
+    }
   } catch (err) {
     console.error("Baum-Modelle konnten nicht geladen werden:", err);
     return false;

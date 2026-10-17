@@ -446,7 +446,8 @@ export class NavGrid {
         for (const f of FOUNTAIN) open = Math.max(open, 0.42 * smooth(7.9, 7.0, Math.hypot(px - f.x, pz - f.z)));
         const d = Math.max(0, -(s - CLIFF_SHIFT));
         const k = smooth(0, 1.5, d);
-        const wall = 2.2 + Math.min(d, 6) * 0.3 + fbm(px * 0.3, pz * 0.3) * 1.0;
+        // Wandinseln flach: die Mauern (walls.ts) bilden den Rand, oben steht Wald
+        const wall = 0.75 + fbm(px * 0.3, pz * 0.3) * 0.2;
         h[z * (N + 1) + x] = open + (wall - open) * k;
       }
     }
