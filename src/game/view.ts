@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { applyCameraCut } from "./camcut";
 import { FlipFx } from "./flipfx";
+import { BreathFx } from "./breath";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
 import { FOUNTAIN, FOUNTAIN_LIFT, MAP, RIVER_BRAZIERS, SHOP, type V2 } from "./mapdata";
@@ -43,7 +44,7 @@ function angleLerp(a: number, b: number, t: number) {
   return a + d * t;
 }
 
-type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh; sparkAcc: number; dustAcc: number };
+type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh; sparkAcc: number; dustAcc: number; head?: THREE.Object3D };
 type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number; rig?: ChampRig };
 type StructView = {
   model: StructModel;
@@ -88,6 +89,8 @@ export class View {
   private braziers: { x: number; z: number; y: number; glow: THREE.Sprite; flame: THREE.Object3D; phase: number; size?: number }[] = [];
   private beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
   private tmpA = new THREE.Vector3();
+  /** blauer Feueratem (Thorne W) */
+  readonly breath = new BreathFx();
   /** Händlerboote (Shop) beider Teams: Münze dreht sich und schwebt */
   private shops: { coin: THREE.Object3D; y: number }[] = [];
   private tmpB = new THREE.Vector3();
@@ -105,6 +108,7 @@ export class View {
     this.ground = new GroundFx();
     scene.add(this.ground.group);
     scene.add(this.flip.group);
+    scene.add(this.breath.group);
     this.indicators = new Indicators();
     scene.add(this.indicators.group);
 
@@ -425,6 +429,28 @@ export class View {
     this.syncProjectiles(dt);
     this.syncAreas();
     this.flip.update(dt);
+    // Feueratem: Strahl aus dem Maul, solange das Zeitfenster läuft (mit weichem Ein- und Ausblenden)
+    for (const v of this.champs.values()) {
+      const b = v.unit.breath;
+      const id = v.unit.id;
+      if (!b || !v.unit.alive || !v.model.root.visible) {
+        this.breath.stop(id);
+        continue;
+      }
+      const age = w.t - b.t0;
+      const power = Math.min(1, Math.max(0, (age - b.from + 0.1) / 0.2), Math.max(0, (b.to + 0.1 - age) / 0.2));
+      if (power <= 0) {
+        this.breath.stop(id);
+        continue;
+      }
+      v.head ??= v.model.root.getObjectByName("mixamorigHead") ?? v.model.body;
+      v.head.getWorldPosition(this.tmpA);
+      this.tmpA.x += b.dx * 0.55;
+      this.tmpA.z += b.dz * 0.55;
+      this.tmpA.y -= 0.15;
+      this.breath.breathe(id, this.tmpA, b.dx, b.dz, power, dt);
+    }
+    this.breath.update(dt);
 
     // Auren
     for (const a of this.auras) {

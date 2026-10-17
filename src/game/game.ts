@@ -161,6 +161,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
     this.hud.resize();
     this.view.particles.setScale(h * this.renderer.getPixelRatio() * 0.9);
+    this.view.breath.setScale(h * this.renderer.getPixelRatio() * 0.9);
   }
 
   private frame(dt: number) {

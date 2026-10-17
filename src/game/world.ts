@@ -1120,7 +1120,8 @@ export class World {
 
     for (const c of this.champs) {
       const b = this.brains.get(c.id);
-      if (b) b.think(this, c, dt);
+      // während des Feueratems denkt der Bot nicht (sonst bräche er ihn sofort mit einem Laufbefehl ab)
+      if (b && !c.breath) b.think(this, c, dt);
     }
     for (const c of this.champs) this.updateChampion(c, dt);
     for (const m of this.minions) if (m.alive) this.updateMinion(m, dt);
@@ -1252,6 +1253,41 @@ export class World {
     if (u.shield > 0 && this.t > u.shieldUntil) u.shield = 0;
   }
 
+  /** Kegel vor dem Feueratem: Reichweite und halber Öffnungswinkel. */
+  static readonly BREATH_RANGE = 7.5;
+  static readonly BREATH_HALF = (27 * Math.PI) / 180;
+
+  /** Feueratem fortführen; true = der Champion bleibt stehen (Rest von updateChampion entfällt). */
+  private updateBreath(c: Champion): boolean {
+    const b = c.breath!;
+    const t = this.t;
+    // Bots: Befehle während des Atems verwerfen (die KI denkt dann nicht, ein Befehl aus demselben Zug bliebe sonst stehen)
+    if (this.brains.has(c.id)) {
+      c.order = { type: "none" };
+      c.path = [];
+    }
+    // Spieler: Klicken (Lauf- oder Angriffsbefehl), Steuern oder Betäubung bricht ab
+    if (c.moveVec || c.path.length || c.order.type !== "none" || c.stunned(t) || t >= b.until) {
+      c.breath = null;
+      return false;
+    }
+    c.facing = Math.atan2(b.dx, b.dz);
+    const age = t - b.t0;
+    while (b.next <= t && age >= b.from && age <= b.to) {
+      b.next += 0.25;
+      for (const u of this.enemiesInRadius(c.team, c.x, c.z, World.BREATH_RANGE + 1.5)) {
+        const dx = u.x - c.x;
+        const dz = u.z - c.z;
+        const d = Math.hypot(dx, dz);
+        if (d - u.radius > World.BREATH_RANGE) continue;
+        const ang = Math.acos(Math.max(-1, Math.min(1, (dx * b.dx + dz * b.dz) / (d || 1))));
+        if (d > 1.2 && ang > World.BREATH_HALF + Math.atan2(u.radius, d)) continue;
+        this.damage(c, u, b.dmg, "magic", { ability: true });
+      }
+    }
+    return true;
+  }
+
   private updateChampion(c: Champion, dt: number) {
     const t = this.t;
     for (let i = 0; i < 4; i++) c.cds[i] = Math.max(0, c.cds[i] - dt);
@@ -1293,6 +1329,8 @@ export class World {
         return;
       }
     }
+
+    if (c.breath && this.updateBreath(c)) return;
 
     if (c.dash) {
       this.updateDash(c, dt);

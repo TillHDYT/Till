@@ -667,7 +667,7 @@ export const CHAMPIONS: ChampDef[] = [
     color: "#7fd27a",
     base: { hp: 690, mana: 320, ad: 56, armor: 38, mr: 32, as: 0.62, range: 2.6, ms: 6.9, hpReg: 2.2, manaReg: 1.6 },
     growth: { hp: 110, mana: 45, ad: 3, armor: 4.6, mr: 2, as: 2 },
-    levelOrder: [3, 0, 2, 1],
+    levelOrder: [3, 0, 1, 2],
     build: ["boots", "sunfire", "spiritcloak", "warmog", "thornmail", "timestaff"],
     look: { body: 0x5c6670, accent: 0x7fd27a, skin: 0x9a8a78, hair: 0x2c3a2a, weapon: "hammer", bulk: 1.3, cape: 0x2f4a2c },
     // Tank Schlag Animation.fbx: 73 Bilder bei 60 fps; die linke Faust ist im Haken bei Bild 21,85 am weitesten vorne
@@ -712,21 +712,23 @@ export const CHAMPIONS: ChampDef[] = [
         },
       },
       {
-        name: "Steinhaut",
-        desc: "Schützt sich und Verbündete in der Nähe mit einem Schild.",
-        icon: "🪨",
-        targeting: "self",
-        range: 7,
+        name: "Blauer Atem",
+        desc: "Brüllt und speit 4 s lang blaues Feuer in einem Kegel nach vorne. Klicken bricht ab.",
+        icon: "🔥",
+        targeting: "dir",
+        range: 7.5,
+        width: 7,
         cd: [14, 13, 12, 11],
-        mana: [50, 50, 50, 50],
-        ai: "self",
-        cast: (w, c, _aim, rank) => {
-          const amt = r4([60, 95, 130, 165], rank) + c.stats.maxHp * 0.1;
-          for (const a of w.alliesInRadius(c.team, c.x, c.z, 7)) {
-            if (a.kind !== "champion") continue;
-            w.shieldUnit(a, amt, 3);
-          }
-          w.fx({ type: "shout", x: c.x, z: c.z, r: 7, color: 0x9fff8a, owner: c });
+        mana: [60, 65, 70, 75],
+        ai: "fight",
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
+          // Feuer passt zur Brüll-Animation (Tank_W, auf 4 s): Luft holen bis 0,8 s, Strahl bis 3,7 s
+          const total = r4([140, 210, 280, 350], rank) + c.stats.ap * 0.8 + c.stats.maxHp * 0.04;
+          const ticks = Math.round((3.7 - 0.8) / 0.25) + 1;
+          c.order = { type: "none" };
+          c.path = [];
+          c.breath = { t0: w.t, until: w.t + 4, dx: d.dx, dz: d.dz, from: 0.8, to: 3.7, next: w.t + 0.8, dmg: total / ticks };
         },
       },
       {

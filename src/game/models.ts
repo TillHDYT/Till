@@ -51,6 +51,7 @@ import tankIdleUrl from "../assets/models/Tank_Idle.glb";
 import tankAttackUrl from "../assets/models/Tank_Attack.glb";
 import tankQUrl from "../assets/models/Tank_Q.glb";
 import tankRUrl from "../assets/models/Tank_R.glb";
+import tankWUrl from "../assets/models/Tank_W.glb";
 import tankDeathUrl from "../assets/models/Tank_Death.glb";
 import warrokUrl from "../assets/models/Warrok.glb";
 import warrokIdleUrl from "../assets/models/Warrok_Idle.glb";
@@ -254,7 +255,8 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
     // (ab 0,5 s, auf der Stelle) — das Beben in champions.ts löst genau dann aus
     casts: [
       { url: tankQUrl, file: "src/assets/models/Tank_Q.glb (aus Tank Fähigkeit Q Animation.fbx, ab 0,9 s)", rate: 1.5 },
-      null,
+      // W: Brüllen (1,0–6,0 s) auf 4 s, Kopf vorne ab ~0,8 s bis ~3,7 s: dort kommt das Feuer aus dem Maul
+      { url: tankWUrl, file: "src/assets/models/Tank_W.glb (aus Tank Fähigkeit W Animation.fbx, 1,0–6,0 s)", rate: 1.25 },
       null,
       { url: tankRUrl, file: "src/assets/models/Tank_R.glb (aus Tank Fähigkeit R Animation.fbx, ab 0,5 s, auf der Stelle)", rate: 1.7 },
     ],

@@ -186,6 +186,11 @@ export class Champion extends Unit {
   lane: LaneId;
   isPlayer = false;
   recallUntil = 0;
+  /**
+   * Feueratem (Thorne W): Startzeit, Ende, Richtung, Zeitfenster des Strahls (Sekunden ab Start) und Schaden je
+   * Treffer-Takt. Klicken oder Laufen bricht ab.
+   */
+  breath: { t0: number; until: number; dx: number; dz: number; from: number; to: number; next: number; dmg: number } | null = null;
   recallStart = 0;
   moveVec: V2 | null = null;
   path: V2[] = [];
