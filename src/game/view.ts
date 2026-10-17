@@ -112,7 +112,7 @@ export class View {
     }
     // Camps: Mulde mit Felsring aus dem Dschungel-Modell
     for (const p of world.grid.campProps) {
-      const jc = buildJungleCamp(p);
+      const jc = buildJungleCamp(p, (x, z) => world.grid.isOpen(x, z));
       if (jc) scene.add(jc);
     }
 

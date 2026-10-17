@@ -15,6 +15,9 @@ import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import baseGroundUrl from "../assets/basemodel.glb";
 import jgCampUrl from "../assets/jgcamp.glb";
+import treeUrl from "../assets/tree.glb";
+import treeGroupUrl from "../assets/treegroup.glb";
+import { TREE_ASSETS } from "./treeAssets";
 import assassinUrl from "../assets/models/Assassine.glb";
 import elaraUrl from "../assets/models/Elara.glb";
 import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
@@ -2127,7 +2130,7 @@ export async function loadJungleCamp(): Promise<boolean> {
     if (o instanceof THREE.Mesh) {
       const m = o.material as THREE.MeshStandardMaterial;
       if (m.map) m.map.anisotropy = 4;
-      m.color.setRGB(0.72, 0.74, 0.78);
+      m.color.setRGB(1.15, 1.12, 1.1);
       m.side = THREE.FrontSide;
       o.castShadow = true;
       o.receiveShadow = true;
@@ -2136,14 +2139,64 @@ export async function loadJungleCamp(): Promise<boolean> {
   return true;
 }
 
-/** Camp-Modell an einem Camp (Lage und Maßstab aus NavGrid.campProps). */
-export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: number; vs: number }): THREE.Object3D | null {
+/**
+ * Camp-Modell an einem Camp (Lage und Maßstab aus NavGrid.campProps). Felsen und Bäume des Modells, die über einem
+ * begehbaren Weg lägen (die Camps haben wie auf der Kluft oft zwei Eingänge, das Modell nur einen), werden
+ * herausgeschnitten: dort bekommt der Felsring eine Lücke und der Weg bleibt sichtbar frei.
+ */
+export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: number; vs: number }, isOpen: (x: number, z: number) => boolean): THREE.Object3D | null {
   if (!jgCamp) return null;
   const g = jgCamp.clone(true);
   g.position.set(p.x, 0, p.z);
   g.rotation.y = p.rot;
   g.scale.set(p.hs, p.vs, p.hs);
+  g.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  g.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const geo = o.geometry.clone();
+    o.geometry = geo;
+    const pos = geo.attributes.position;
+    const idx: number[] = geo.index ? Array.from(geo.index.array as ArrayLike<number>) : Array.from({ length: pos.count }, (_, i) => i);
+    const keep: number[] = [];
+    const local = new THREE.Vector3();
+    for (let t = 0; t < idx.length; t += 3) {
+      let free = 0;
+      for (let k = 0; k < 3; k++) {
+        local.fromBufferAttribute(pos, idx[t + k]);
+        v.copy(local).applyMatrix4(o.matrixWorld);
+        // nur Felsen und Bäume (über dem Erdboden) über freien Zellen
+        if (local.y > 0.08 && isOpen(v.x, v.z)) free++;
+      }
+      if (free < 3) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    geo.setIndex(keep);
+  });
   return g;
+}
+
+// ---------------- Bäume aus den Modellen (assets-src/trees -> tree.glb, treegroup.glb) ----------------
+
+/** Lädt Baum und Baumgruppe für den Wald. Bei einem Fehler bleiben die gebauten Bäume. */
+export async function loadTrees(): Promise<boolean> {
+  if (TREE_ASSETS.list) return true;
+  try {
+    const list = [];
+    for (const url of [treeUrl, treeGroupUrl]) {
+      const mesh = (await loadGlbOffline(url)).scene.getObjectByProperty("isMesh", true) as THREE.Mesh | undefined;
+      if (!mesh) throw new Error("Baum-GLB ohne Mesh");
+      mesh.updateWorldMatrix(true, false);
+      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+      geo.computeBoundingBox();
+      const map = (mesh.material as THREE.MeshStandardMaterial).map;
+      list.push({ geo, map, height: geo.boundingBox!.max.y });
+    }
+    TREE_ASSETS.list = list;
+  } catch (err) {
+    console.error("Baum-Modelle konnten nicht geladen werden:", err);
+    return false;
+  }
+  return true;
 }
 
 // ---------------- Startbasis aus dem 3D-Modell (assets-src/startbase.md -> startbase.glb) ----------------

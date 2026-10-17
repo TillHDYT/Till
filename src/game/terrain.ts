@@ -4,6 +4,7 @@ import { addCutUniforms } from "./camcut";
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, CAMP_PIT, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
 import { campDist, campShape, fbm, noise2, rng, type NavGrid } from "./navgrid";
+import { TREE_ASSETS } from "./treeAssets";
 import grassUrl from "../assets/grass.jpg";
 import leavesUrl from "../assets/leaves.png";
 import pathUrl from "../assets/path.jpg";
@@ -964,6 +965,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     else c.setRGB(v * (0.55 + rand() * 0.25), v * (0.72 + rand() * 0.15), v * (0.62 + rand() * 0.2));
     // keine Baumkronen über den Kuhlen der Camps (Monster sollen frei darin stehen)
     if (CAMPS.some((cp) => CAMP_PIT[cp.kind] && Math.hypot(cp.pos.x - x, cp.pos.z - z) < CAMP_PIT[cp.kind]! + 0.6 + 2.8 * s)) return;
+    // im Camp-Modell stehen eigene Bäume auf den Felsen
+    if (grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.r)) return;
     buckets[kind][chunkOf(x, z)].push({ m, c });
   };
   // Felswände am Fluss rund um Baron und Drache (wie auf der Kluft): graue Felsen statt Wald
@@ -984,7 +987,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       if (grid.base[Math.min(grid.n - 1, Math.floor(z)) * grid.n + Math.min(grid.n - 1, Math.floor(x))] >= 0) continue;
       const depth = -sd;
       if (depth > 7 && rand() < 0.45) continue;
-      const kind = rand() < 0.5 ? 0 : 1;
+      // Dreiergruppe nur, wo genug Platz ist
+      const kind = depth > 4.5 && rand() < 0.3 ? 1 : 0;
       const s = (depth > 4 ? 0.95 : 0.75) + rand() * 0.3;
       addTree(x, z, grid.heightAt(x, z) - 0.15, kind, s);
     }
@@ -998,27 +1002,65 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     const z = side === 2 ? -out : side === 3 ? MAP + out : along;
     addTree(x, z, 2.4, rand() < 0.5 ? 0 : 1, 1.1 + rand() * 0.4);
   }
-  const foliage = [
-    { geo: pineFoliage(5, high ? 14 : 10), mat: foliageMat(texture(pineUrl, true), "pine", "0.035 * max(0.0, position.y - 1.0)") },
-    { geo: broadFoliage(7), mat: foliageMat(texture(leavesUrl, false), "leaf", "0.03 * max(0.0, position.y - 1.5)") },
-  ];
-  const trunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  fog.patch(trunkMat, cutPatch, "trunk");
-  const trunks = [colored(new THREE.CylinderGeometry(0.13, 0.28, 2.2, 6), 0x4a3424, mat4(0, 1.0, 0)), colored(new THREE.CylinderGeometry(0.2, 0.36, 3.0, 7), 0x5a3f2a, mat4(0, 1.4, 0))];
-  for (let kind = 0; kind < TREE_KINDS; kind++) {
-    for (const list of buckets[kind]) {
-      if (!list.length) continue;
-      for (const part of ["leaf", "trunk"] as const) {
-        const im = new THREE.InstancedMesh(part === "leaf" ? foliage[kind].geo : trunks[kind], part === "leaf" ? foliage[kind].mat : trunkMat, list.length);
+  const models = TREE_ASSETS.list;
+  if (models) {
+    // Bäume aus den Modellen: einzelner Baum und Dreiergruppe, etwas Farbe und Größe je Baum
+    models.forEach((t, kind) => {
+      const mat = new THREE.MeshLambertMaterial({ map: t.map ?? undefined });
+      if (mat.map) {
+        mat.map.colorSpace = THREE.SRGBColorSpace;
+        mat.map.anisotropy = 4;
+      }
+      const swayPatch = sway(`${(0.05 / t.height).toFixed(4)} * max(0.0, position.y - ${(t.height * 0.3).toFixed(3)})`);
+      fog.patch(
+        mat,
+        (shader) => {
+          swayPatch(shader);
+          cutPatch(shader);
+        },
+        `tree${kind}`,
+      );
+      const size = (kind === 0 ? 5.4 : 6.2) / t.height;
+      for (const list of buckets[kind]) {
+        if (!list.length) continue;
+        const im = new THREE.InstancedMesh(t.geo, mat, list.length);
+        const sc = new THREE.Matrix4().makeScale(size, size, size);
         list.forEach((inst, j) => {
-          im.setMatrixAt(j, inst.m);
-          if (part === "leaf") im.setColorAt(j, inst.c);
+          im.setMatrixAt(j, inst.m.clone().multiply(sc));
+          // Szene ist dunkel ausgeleuchtet (Gelände hat eigene Verstärkung), Bäume entsprechend aufhellen
+          const v = 2.2 * (0.85 + (inst.c.g - 0.5) * 0.4);
+          im.setColorAt(j, new THREE.Color(v * 0.92, v * 1.08, v * 0.86));
         });
         im.instanceMatrix.needsUpdate = true;
         if (im.instanceColor) im.instanceColor.needsUpdate = true;
         im.computeBoundingSphere();
-        im.castShadow = high && part === "leaf";
+        im.castShadow = high;
         group.add(im);
+      }
+    });
+  } else {
+    const foliage = [
+      { geo: pineFoliage(5, high ? 14 : 10), mat: foliageMat(texture(pineUrl, true), "pine", "0.035 * max(0.0, position.y - 1.0)") },
+      { geo: broadFoliage(7), mat: foliageMat(texture(leavesUrl, false), "leaf", "0.03 * max(0.0, position.y - 1.5)") },
+    ];
+    const trunkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    fog.patch(trunkMat, cutPatch, "trunk");
+    const trunks = [colored(new THREE.CylinderGeometry(0.13, 0.28, 2.2, 6), 0x4a3424, mat4(0, 1.0, 0)), colored(new THREE.CylinderGeometry(0.2, 0.36, 3.0, 7), 0x5a3f2a, mat4(0, 1.4, 0))];
+    for (let kind = 0; kind < TREE_KINDS; kind++) {
+      for (const list of buckets[kind]) {
+        if (!list.length) continue;
+        for (const part of ["leaf", "trunk"] as const) {
+          const im = new THREE.InstancedMesh(part === "leaf" ? foliage[kind].geo : trunks[kind], part === "leaf" ? foliage[kind].mat : trunkMat, list.length);
+          list.forEach((inst, j) => {
+            im.setMatrixAt(j, inst.m);
+            if (part === "leaf") im.setColorAt(j, inst.c);
+          });
+          im.instanceMatrix.needsUpdate = true;
+          if (im.instanceColor) im.instanceColor.needsUpdate = true;
+          im.computeBoundingSphere();
+          im.castShadow = high && part === "leaf";
+          group.add(im);
+        }
       }
     }
   }

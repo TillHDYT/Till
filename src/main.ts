@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { Sfx } from "./game/audio";
 import { CHAMPIONS, ROLE_NAMES, type Role } from "./game/champions";
 import { Game, navGrid } from "./game/game";
-import { buildChampion, loadChampionModels, loadGuardian, loadInhibitor, loadNexus, loadStartBase, loadBaseGround, loadJungleCamp } from "./game/models";
+import { buildChampion, loadChampionModels, loadGuardian, loadInhibitor, loadNexus, loadStartBase, loadBaseGround, loadJungleCamp, loadTrees } from "./game/models";
 import type { Quality } from "./game/terrain";
 import type { Difficulty } from "./game/world";
 
@@ -33,7 +33,7 @@ function save(s: Settings) {
 
 const settings = load();
 // 3D-Modelle (Türme, Inhibitoren, Nexus, Startbasis, Champions) gleich beim Start laden, damit Auswahlbilder und Spiel sie nutzen
-const modelsReady = Promise.all([loadGuardian(), loadInhibitor(), loadNexus(), loadStartBase(), loadBaseGround(), loadJungleCamp(), loadChampionModels()]);
+const modelsReady = Promise.all([loadGuardian(), loadInhibitor(), loadNexus(), loadStartBase(), loadBaseGround(), loadJungleCamp(), loadTrees(), loadChampionModels()]);
 const params = new URLSearchParams(location.search);
 let portraits: Record<string, string> | null = null;
 

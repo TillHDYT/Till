@@ -264,7 +264,9 @@ export class NavGrid {
   /** So weit liegt der Geländeboden unter dem Basis-Modell tiefer (gleiche Auflösung wie heights), damit er nicht durchscheint. */
   readonly groundSink: Float32Array;
   /** Camp-Modelle (Mulde mit Felsring): Lage, Drehung um y, Maßstab waagrecht und senkrecht. */
-  campProps: { x: number; z: number; rot: number; hs: number; vs: number }[] = [];
+  campProps: { x: number; z: number; rot: number; hs: number; vs: number; r: number }[] = [];
+  /** Passung der Camp-Modelle: begehbare Zellen unter Felsen, Wandzellen unter dem Boden (beides soll 0 sein). */
+  campFit: { id: string; rock: number; floor: number; turn: number; hs: number }[] = [];
 
   private gScore: Float32Array;
   private came: Int32Array;
@@ -466,17 +468,19 @@ export class NavGrid {
       }
     }
     this.groundSink = sink;
-    // Camps: Mulde mit Felsring aus dem Dschungel-Modell (assets-src/jungle-model), offen zum Eingang des Camps.
-    // Boden der Mulde aus der Höhenkarte des Modells, darunter wird das Gelände abgesenkt.
+    // Camps: Modell mit Erdboden und Felsring (assets-src/jungle-model), offen zum Eingang des Camps. Drehung und
+    // Größe werden je Camp so gewählt, dass die Felsen keine begehbaren Zellen überdecken und der Boden nicht über
+    // Wand liegt (sonst sähe es offen aus, wäre aber Wand). Unter dem Modell wird das Gelände abgesenkt.
     const JG = JG_CAMP_HEIGHT;
-    const jgAt = (u: number, w: number) => {
-      const fi = ((u + JG.r) / (2 * JG.r)) * (JG.n - 1);
-      const fj = ((w + JG.r) / (2 * JG.r)) * (JG.n - 1);
-      if (fi < 0 || fj < 0 || fi >= JG.n - 1 || fj >= JG.n - 1) return -1;
-      const b = JG_H[Math.round(fj) * JG.n + Math.round(fi)];
-      return b ? (b - 1) / 400 - 0.2 : -1;
+    const jgTop = (u: number, w: number) => {
+      const fi = Math.round(((u + JG.r) / (2 * JG.r)) * (JG.n - 1));
+      const fj = Math.round(((w + JG.r) / (2 * JG.r)) * (JG.n - 1));
+      if (fi < 0 || fj < 0 || fi >= JG.n || fj >= JG.n) return -9;
+      const b = JG_H[fj * JG.n + fi];
+      return b ? (b - 21) / 200 : -9;
     };
     this.campProps = [];
+    this.campFit = [];
     for (const c of CAMPS) {
       const r = CAMP_PIT[c.kind];
       if (!r) continue;
@@ -491,10 +495,40 @@ export class NavGrid {
           ez += dz / d;
         }
       }
-      const rot = Math.atan2(ex, ez);
-      const hs = (r / 0.3) * 0.95;
-      const vs = 12;
-      this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs });
+      const rot0 = Math.atan2(ex, ez);
+      const hs0 = r / 0.36;
+      const score = (rot: number, hs: number) => {
+        const co = Math.cos(rot);
+        const si = Math.sin(rot);
+        let rock = 0;
+        let floor = 0;
+        const ext = Math.ceil(hs * JG.r);
+        for (let dz = -ext; dz <= ext; dz++) {
+          for (let dx = -ext; dx <= ext; dx++) {
+            const wx = dx + 0.5;
+            const wz = dz + 0.5;
+            const t = jgTop((wx * co - wz * si) / hs, (wx * si + wz * co) / hs);
+            if (t < -1) continue;
+            const open = this.isOpen(c.pos.x + wx, c.pos.z + wz);
+            if (t > 0.08 && open) rock++;
+            else if (t <= 0.08 && !open) floor++;
+          }
+        }
+        return { rock, floor };
+      };
+      let best = { rot: rot0, hs: hs0, rock: 0, floor: 0, cost: Infinity };
+      for (let da = -60; da <= 60; da += 10) {
+        for (const k of [0.75, 0.85, 0.95, 1.05]) {
+          const rot = rot0 + (da * Math.PI) / 180;
+          const { rock, floor } = score(rot, hs0 * k);
+          const cost = rock * 3 + floor * 2 + Math.abs(da) * 0.3 + Math.abs(k - 0.95) * 40;
+          if (cost < best.cost) best = { rot, hs: hs0 * k, rock, floor, cost };
+        }
+      }
+      const { rot, hs } = best;
+      const vs = hs * 0.6;
+      this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs, r: hs * 0.95 });
+      this.campFit.push({ id: c.id, rock: best.rock, floor: best.floor, turn: Math.round(((rot - rot0) * 180) / Math.PI), hs: +hs.toFixed(1) });
       const co = Math.cos(rot);
       const si = Math.sin(rot);
       const ext = Math.ceil(JG.r * hs * R);
@@ -504,18 +538,18 @@ export class NavGrid {
         for (let x = Math.max(0, cx - ext); x <= Math.min(N, cx + ext); x++) {
           const wx = x / R - c.pos.x;
           const wz = z / R - c.pos.z;
-          const u = (wx * co - wz * si) / hs;
-          const w = (wx * si + wz * co) / hs;
-          const mh = jgAt(u, w);
-          if (mh < -0.5) continue;
-          const i0 = z * (N + 1) + x;
-          sink[i0] = Math.max(sink[i0], 0.35 * (1 - smooth(0.44, 0.6, Math.hypot(u, w))));
-          // Boden der Mulde aus dem Modell; außerhalb taucht das Modell unter das Gelände
-          if (Math.hypot(u, w) > 0.4) continue;
+          const t = jgTop((wx * co - wz * si) / hs, (wx * si + wz * co) / hs);
+          if (t < -1) continue;
           const i = z * (N + 1) + x;
-          const d = Math.max(0, -(this.sdAt(x / R, z / R) - CLIFF_SHIFT));
-          const open = 1 - smooth(0, 1.5, d);
-          h[i] += (mh * vs - h[i]) * open * (1 - smooth(0.32, 0.4, Math.hypot(u, w)));
+          const open = this.isOpen(x / R, z / R);
+          // über freien Wegen ist der Fels herausgeschnitten (models.ts): dort bleibt der Boden sichtbar
+          if (open && t > 0.08) continue;
+          // vorne taucht der Erdboden des Modells unter das Gelände: dort bleibt das Gelände oben
+          if (t < -0.02) continue;
+          sink[i] = Math.max(sink[i], 0.35);
+          // Wand unter den Felsen absenken: die Felsen des Modells sind hier die Wand. Unter dem Erdboden bleibt die
+          // Wand stehen (sonst sähe es offen aus, wäre aber Wand)
+          if (!open && t > 0.08) h[i] = Math.min(h[i], -0.2);
         }
       }
     }
