@@ -444,6 +444,7 @@ function groundTiles(grid: NavGrid, tiles: number) {
   const w = n + 1;
   const H = grid.heights;
   const hAt = (x: number, z: number) => H[Math.max(0, Math.min(n, z)) * w + Math.max(0, Math.min(n, x))];
+  const S = grid.groundSink;
   const per = n / tiles;
   const out: THREE.BufferGeometry[] = [];
   for (let tz = 0; tz < tiles; tz++) {
@@ -460,7 +461,7 @@ function groundTiles(grid: NavGrid, tiles: number) {
           const gz = z0 + j;
           const k = j * vw + i;
           pos[k * 3] = gx / R;
-          pos[k * 3 + 1] = hAt(gx, gz);
+          pos[k * 3 + 1] = hAt(gx, gz) - S[Math.max(0, Math.min(n, gz)) * w + Math.max(0, Math.min(n, gx))];
           pos[k * 3 + 2] = gz / R;
           const nx = (hAt(gx - 1, gz) - hAt(gx + 1, gz)) * R * 0.5;
           const nz = (hAt(gx, gz - 1) - hAt(gx, gz + 1)) * R * 0.5;

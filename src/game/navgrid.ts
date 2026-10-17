@@ -18,6 +18,31 @@ import {
 } from "./mapdata";
 import { JUNGLE_MASK } from "./jungleMask";
 import { START_BASE_FOOTPRINT } from "./startbaseFootprint";
+import { BASE_MODEL_HEIGHT } from "./baseModelHeight";
+
+/** Oberfläche des Basis-Modells (assets-src/base-model): [Höhe, Abdeckung 0..1]; Rot ist die Punktspiegelung. */
+const BASE_H = Uint8Array.from(atob(BASE_MODEL_HEIGHT.data), (c) => c.charCodeAt(0));
+function baseModelAt(x: number, z: number): [number, number] {
+  if (x > z) {
+    x = MAP - x;
+    z = MAP - z;
+  }
+  const M = BASE_MODEL_HEIGHT;
+  const fx = (x - M.x0) * M.res;
+  const fz = (z - M.z0) * M.res;
+  if (fx < 0 || fz < 0 || fx >= M.n - 1 || fz >= M.n - 1) return [0, 0];
+  const ix = Math.floor(fx);
+  const iz = Math.floor(fz);
+  let h = 0;
+  let w = 0;
+  for (const [dx, dz, k] of [[0, 0, (1 - fx + ix) * (1 - fz + iz)], [1, 0, (fx - ix) * (1 - fz + iz)], [0, 1, (1 - fx + ix) * (fz - iz)], [1, 1, (fx - ix) * (fz - iz)]]) {
+    const b = BASE_H[(iz + dz) * M.n + ix + dx];
+    if (!b) continue;
+    h += ((b - 1) / 40 - 1) * k;
+    w += k;
+  }
+  return w > 0 ? [h / w, w] : [0, 0];
+}
 
 // Deterministischer Zufall, damit die Karte bei jedem Start gleich aussieht.
 export function rng(seed: number) {
@@ -234,6 +259,8 @@ export class NavGrid {
   readonly hres = 2;
   /** Höhen an den (n·hres+1)² Gitterpunkten, nur für die Optik. */
   readonly heights: Float32Array;
+  /** So weit liegt der Geländeboden unter dem Basis-Modell tiefer (gleiche Auflösung wie heights), damit er nicht durchscheint. */
+  readonly groundSink: Float32Array;
 
   private gScore: Float32Array;
   private came: Int32Array;
@@ -417,6 +444,24 @@ export class NavGrid {
         h[z * (N + 1) + x] = open + (wall - open) * k;
       }
     }
+    // Basis: Boden ist das 3D-Modell, Einheiten und Gebäude stehen auf seiner Oberfläche
+    const sink = new Float32Array((N + 1) * (N + 1));
+    for (let z = 0; z <= N; z++) {
+      for (let x = 0; x <= N; x++) {
+        const px = x / R;
+        const pz = z / R;
+        const inB = cellSample(baseArr, n, px, pz);
+        if (inB <= 0) continue;
+        const [mh, cover] = baseModelAt(px, pz);
+        if (cover <= 0) continue;
+        // auf dem Brunnen steht das Brunnenmodell (eigene Höhe, siehe oben)
+        if (FOUNTAIN.some((f) => Math.hypot(px - f.x, pz - f.z) < FOUNTAIN_RADIUS)) continue;
+        const i = z * (N + 1) + x;
+        h[i] += (mh - h[i]) * cover * inB;
+        sink[i] = 0.35 * cover;
+      }
+    }
+    this.groundSink = sink;
     // Kuhlen der Dschungel-Camps: flache, unregelmäßige Mulde, zum Rand weich ansteigend
     for (const c of CAMPS) {
       const r = CAMP_PIT[c.kind];

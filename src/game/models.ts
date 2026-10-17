@@ -13,6 +13,7 @@ import guardianBlueUrl from "../assets/guardian_blue.jpg";
 import nexusUrl from "../assets/nexus.glb";
 import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
+import baseGroundUrl from "../assets/basemodel.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
 import elaraUrl from "../assets/models/Elara.glb";
 import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
@@ -2070,6 +2071,43 @@ function emblemTexture(team: 0 | 1) {
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
+}
+
+// ---------------- Basis-Hintergrund als 3D-Modell (assets-src/base-model -> basemodel.glb) ----------------
+
+let baseGround: THREE.Object3D | null = null;
+
+/** Lädt den Basisboden einmalig (in Weltkoordinaten der blauen Basis). Bei einem Fehler bleibt der gemalte Boden. */
+export async function loadBaseGround(): Promise<boolean> {
+  if (baseGround) return true;
+  try {
+    baseGround = (await loadGlbOffline(baseGroundUrl)).scene;
+  } catch (err) {
+    console.error("Basis-Modell konnte nicht geladen werden:", err);
+    return false;
+  }
+  baseGround.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      const m = o.material as THREE.MeshStandardMaterial;
+      if (m.map) m.map.anisotropy = 8;
+      // Textur ist sehr hell und satt: an das Licht der Kluft angleichen
+      m.color.setRGB(0.56, 0.58, 0.63);
+      m.side = THREE.FrontSide;
+      o.receiveShadow = true;
+    }
+  });
+  return true;
+}
+
+/** Basisboden eines Teams; Rot ist die Punktspiegelung (um die Kartenmitte gedreht). */
+export function buildBaseGround(team: 0 | 1, map: number): THREE.Object3D | null {
+  if (!baseGround) return null;
+  const g = baseGround.clone(true);
+  if (team === 1) {
+    g.rotation.y = Math.PI;
+    g.position.set(map, 0, map);
+  }
+  return g;
 }
 
 // ---------------- Startbasis aus dem 3D-Modell (assets-src/startbase.md -> startbase.glb) ----------------

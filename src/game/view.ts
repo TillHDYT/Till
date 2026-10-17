@@ -13,6 +13,7 @@ import {
   playCast,
   type ChampRig,
   addStartBaseFires,
+  buildBaseGround,
   buildFountain,
   buildInhibitor,
   buildMonster,
@@ -102,6 +103,12 @@ export class View {
     scene.add(this.flip.group);
     this.indicators = new Indicators();
     scene.add(this.indicators.group);
+
+    // Basisboden als 3D-Modell
+    for (const t of [0, 1] as const) {
+      const bg = buildBaseGround(t, MAP);
+      if (bg) scene.add(bg);
+    }
 
     // Brunnen
     FOUNTAIN.forEach((f, i) => {
