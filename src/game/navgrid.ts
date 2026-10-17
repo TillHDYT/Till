@@ -8,7 +8,6 @@ import {
   LANE_WIDTH,
   MAP,
   inBaseArea,
-  inBaseWall,
   STRUCTURES,
   onBaseWalk,
   distToPolyline,
@@ -24,7 +23,10 @@ const JG_H = Uint8Array.from(atob(JG_CAMP_HEIGHT.data), (c) => c.charCodeAt(0));
 
 /** Oberfläche des Basis-Modells (assets-src/base-model): [Höhe, Abdeckung 0..1]; Rot ist die Punktspiegelung. */
 const BASE_H = Uint8Array.from(atob(BASE_MODEL_HEIGHT.data), (c) => c.charCodeAt(0));
-function baseModelAt(x: number, z: number): [number, number] {
+/** Ab dieser Höhe ist die Oberfläche des Basis-Modells Fels (Mauer am Rand), darunter begehbarer Boden. */
+const BASE_ROCK = 1.5;
+
+export function baseModelAt(x: number, z: number): [number, number] {
   if (x > z) {
     x = MAP - x;
     z = MAP - z;
@@ -287,6 +289,7 @@ export class NavGrid {
     this.closedStamp = new Uint32Array(n * n);
 
     const ring: V2[] = [...LANES.top, ...[...LANES.bot].reverse()];
+    const baseRock = new Uint8Array(n * n);
     const laneIds: LaneId[] = ["top", "mid", "bot"];
 
     for (let z = 0; z < n; z++) {
@@ -315,9 +318,15 @@ export class NavGrid {
         if (inBase >= 0) open = true;
         for (const t of [0, 1] as const) {
           if (onBaseWalk(t, p)) open = true;
-          if (inBaseWall(t, p)) open = false;
+        }
+        // Basismauer = Felsen des Basis-Modells (Rand mit Lücken für Treppen und Tore), damit Wand und Optik
+        // übereinstimmen (keine unsichtbaren Wände, nicht in Felsen laufen)
+        {
+          const [mh, cover] = baseModelAt(p.x, p.z);
+          if (cover > 0.5 && mh > BASE_ROCK) open = false;
         }
         if (laneT > 0.25) open = true;
+        const rockHere = !open && baseModelAt(p.x, p.z)[1] > 0.5 && baseModelAt(p.x, p.z)[0] > BASE_ROCK;
         for (const f of FOUNTAIN) {
           if (Math.hypot(p.x - f.x, p.z - f.z) < FOUNTAIN_RADIUS + 1) open = true;
         }
@@ -330,6 +339,7 @@ export class NavGrid {
           if (Math.hypot(p.x - c.pos.x, p.z - c.pos.z) < 3) open = true;
         }
         this.walk[i] = open ? 1 : 0;
+        if (rockHere && !open) baseRock[i] = 1;
       }
     }
 
@@ -344,6 +354,8 @@ export class NavGrid {
       const toWall = edt(grown, n);
       for (let i = 0; i < n * n; i++) if (!this.walk[i] && toWall[i] > THIN_WALL) this.walk[i] = 1;
     }
+    // Felsen des Basis-Modells sind sichtbar, auch wenn sie schmal sind: wieder als Wand setzen
+    for (let i = 0; i < n * n; i++) if (baseRock[i]) this.walk[i] = 0;
 
     // weiches Ufer; kein Wasser unter den Wandinseln und auf den Lanes (Mid quert trocken)
     this.river.set(blur(blur(blur(this.river, n), n), n));
@@ -524,7 +536,7 @@ export class NavGrid {
         }
       }
       const { rot, hs } = best;
-      const vs = hs * 0.6;
+      const vs = hs * 0.8;
       this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs, r: hs * 0.95, niche: r + 0.5 });
       this.campFit.push({ id: c.id, rock: best.rock, floor: best.floor, turn: Math.round(((rot - rot0) * 180) / Math.PI), hs: +hs.toFixed(1) });
       const co = Math.cos(rot);

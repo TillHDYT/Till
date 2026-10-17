@@ -10,8 +10,10 @@ import { cellSample, type NavGrid } from "./navgrid";
  */
 export type WallAsset = { geo: THREE.BufferGeometry; map: THREE.Texture | null; length: number; depth: number; height: number };
 
-/** Maßstab des Mauerstücks (Modell-Einheiten -> Welt): Länge ~7.5, Tiefe ~2.8, Höhe ~2.6. */
+/** Maßstab des Mauerstücks (Modell-Einheiten -> Welt): Länge ~7.5, Tiefe ~2.8. */
 const WALL_SCALE = 4;
+/** Höhe des Mauerstücks gegenüber Länge und Tiefe gestreckt: Wände wie auf der Kluft (~4 hoch). */
+const WALL_HEIGHT_SCALE = 6.5;
 /** So tief sitzt der Fuß der Mauer unter dem Boden. */
 const WALL_SINK = 0.35;
 
@@ -242,7 +244,7 @@ export function buildWallGeometry(grid: NavGrid, asset: WallAsset, skip: (x: num
           const dd = (-mz / asset.depth) * q.d;
           const tx = -q.nn.y;
           const tz = q.nn.x;
-          pos.push(q.p.x + q.nn.x * dd, my * WALL_SCALE - WALL_SINK, q.p.y + q.nn.y * dd);
+          pos.push(q.p.x + q.nn.x * dd, my * WALL_HEIGHT_SCALE - WALL_SINK, q.p.y + q.nn.y * dd);
           // Normale: Modell x -> Kante, Modell -z -> in die Wand, y -> oben (Biegung vernachlässigt)
           const nx = sn.getX(v);
           const ny = sn.getY(v);

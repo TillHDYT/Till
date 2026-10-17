@@ -3,7 +3,7 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 import { addCutUniforms } from "./camcut";
 import type { FogOfWar } from "./fog";
 import { BARON_POS, BRUSHES, CAMPS, CAMP_PIT, DRAGON_POS, FOUNTAIN, LANES, LANE_WIDTH, MAP, STRUCTURES, distToPolyline, type LaneId } from "./mapdata";
-import { campDist, campShape, fbm, noise2, rng, type NavGrid } from "./navgrid";
+import { baseModelAt, campDist, campShape, fbm, noise2, rng, type NavGrid } from "./navgrid";
 import { TREE_ASSETS, WALL_ASSET } from "./treeAssets";
 import { buildWallGeometry } from "./walls";
 import grassUrl from "../assets/grass.jpg";
@@ -1071,6 +1071,9 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   const wallAsset = WALL_ASSET.asset;
   if (wallAsset) {
     const { geos, pieces, length } = buildWallGeometry(grid, wallAsset, (x, z) => {
+      // wo das Basis-Modell Felsen hat, bilden diese die Wand
+      const [bh, bc] = baseModelAt(x, z);
+      if (bc > 0.5 && bh > 1.0) return true;
       for (let dz = -3; dz <= 3; dz += 3)
         for (let dx = -3; dx <= 3; dx += 3) {
           const cx = Math.floor(x + dx);

@@ -184,7 +184,8 @@ function pointInPolygon(p: V2, poly: V2[]) {
  */
 const BASE_WALL = 4;
 const BASE_GATES: V2[][] = [
-  [px(186, 714), px(181, 645)],
+  // Lücke im Felsrand des Basis-Modells (assets-src/base-model)
+  [px(198, 714), px(196, 645)],
   [px(312, 828), px(392, 828)],
 ];
 const BASE_WALK: V2[] = [px(55, 660), px(120, 660), px(175, 664), px(225, 675), px(265, 697), px(298, 723), px(325, 757), px(343, 795), px(354, 840), px(358, 885), px(360, 965)];
