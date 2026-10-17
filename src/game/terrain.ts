@@ -1159,6 +1159,8 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
       const x = b.p.x + Math.cos(a) * r;
       const z = b.p.z + Math.sin(a) * r;
       const s = 0.85 + rand() * 0.45;
+      // Büsche nur auf begehbarem Boden (nicht in die Wand hinein)
+      if (grid.brushAt(x, z) < 0) continue;
       const tint = 0.72 + rand() * 0.22;
       blades.push({ m: mat4(x, grid.groundAt(x, z) - 0.05, z, s, s * (0.85 + rand() * 0.4), s, 0, rand() * 6, 0), c: new THREE.Color(tint, tint * (0.95 + rand() * 0.1), tint * 0.9) });
     }

@@ -329,9 +329,6 @@ export class NavGrid {
         for (const c of CAMPS) {
           if (Math.hypot(p.x - c.pos.x, p.z - c.pos.z) < 3) open = true;
         }
-        for (const b of BRUSHES) {
-          if (Math.hypot(p.x - b.p.x, p.z - b.p.z) < b.r + 1.2) open = true;
-        }
         this.walk[i] = open ? 1 : 0;
       }
     }
