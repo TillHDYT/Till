@@ -967,7 +967,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     // keine Baumkronen über den Kuhlen der Camps (Monster sollen frei darin stehen)
     if (CAMPS.some((cp) => CAMP_PIT[cp.kind] && Math.hypot(cp.pos.x - x, cp.pos.z - z) < CAMP_PIT[cp.kind]! + 0.6 + 2.8 * s)) return;
     // im Camp-Modell stehen eigene Bäume auf den Felsen
-    if (grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.r)) return;
+    if (grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.niche + 3)) return;
     buckets[kind][chunkOf(x, z)].push({ m, c });
   };
   // Felswände am Fluss rund um Baron und Drache (wie auf der Kluft): graue Felsen statt Wald
@@ -1077,7 +1077,9 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           const cz = Math.floor(z + dz);
           if (cx >= 0 && cz >= 0 && cx < grid.n && cz < grid.n && grid.base[cz * grid.n + cx] >= 0) return true;
         }
-      return grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.r * 0.85);
+      // an der Nische bildet der Felsring des Camp-Modells die Wand, sonst (auch wo das Modell über Wegen
+      // abgeschnitten ist) die Mauer
+      return grid.campProps.some((cp) => Math.hypot(cp.x - x, cp.z - z) < cp.niche + 2);
     });
     const mat = new THREE.MeshLambertMaterial({ map: wallAsset.map ?? undefined, color: new THREE.Color(2.0, 2.0, 2.0) });
     if (mat.map) {

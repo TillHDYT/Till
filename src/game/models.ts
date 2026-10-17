@@ -2141,11 +2141,11 @@ export async function loadJungleCamp(): Promise<boolean> {
 }
 
 /**
- * Camp-Modell an einem Camp (Lage und Maßstab aus NavGrid.campProps). Felsen und Bäume des Modells, die über einem
- * begehbaren Weg lägen (die Camps haben wie auf der Kluft oft zwei Eingänge, das Modell nur einen), werden
- * herausgeschnitten: dort bekommt der Felsring eine Lücke und der Weg bleibt sichtbar frei.
+ * Camp-Modell an einem Camp (Lage und Maßstab aus NavGrid.campProps). Vom Modell bleibt nur, was zum Camp gehört:
+ * der Erdboden in der Nische und die Felsen über der Wand. Alles über einem Weg wird ganz herausgeschnitten (jedes
+ * Dreieck, das mit einer Ecke über den Weg ragt), damit die Wege glatt bleiben; dort läuft die Mauer weiter.
  */
-export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: number; vs: number }, isOpen: (x: number, z: number) => boolean): THREE.Object3D | null {
+export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: number; vs: number; niche: number }, isOpen: (x: number, z: number) => boolean): THREE.Object3D | null {
   if (!jgCamp) return null;
   const g = jgCamp.clone(true);
   g.position.set(p.x, 0, p.z);
@@ -2153,6 +2153,8 @@ export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: numb
   g.scale.set(p.hs, p.vs, p.hs);
   g.updateMatrixWorld(true);
   const v = new THREE.Vector3();
+  // frei = auch etwas daneben frei (Felsen dürfen an der Wegkante minimal überstehen)
+  const onPath = (x: number, z: number) => isOpen(x, z) && isOpen(x + 0.35, z) && isOpen(x - 0.35, z) && isOpen(x, z + 0.35) && isOpen(x, z - 0.35);
   g.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
     const geo = o.geometry.clone();
@@ -2162,14 +2164,16 @@ export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: numb
     const keep: number[] = [];
     const local = new THREE.Vector3();
     for (let t = 0; t < idx.length; t += 3) {
-      let free = 0;
-      for (let k = 0; k < 3; k++) {
+      let cut = false;
+      for (let k = 0; k < 3 && !cut; k++) {
         local.fromBufferAttribute(pos, idx[t + k]);
         v.copy(local).applyMatrix4(o.matrixWorld);
-        // nur Felsen und Bäume (über dem Erdboden) über freien Zellen
-        if (local.y > 0.08 && isOpen(v.x, v.z)) free++;
+        if (!isOpen(v.x, v.z)) continue;
+        const inNiche = Math.hypot(v.x - p.x, v.z - p.z) <= p.niche;
+        // Erdboden nur in der Nische, Felsen und Bäume nie über einem Weg
+        if (!inNiche || (local.y > 0.08 && onPath(v.x, v.z))) cut = true;
       }
-      if (free < 3) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+      if (!cut) keep.push(idx[t], idx[t + 1], idx[t + 2]);
     }
     geo.setIndex(keep);
   });

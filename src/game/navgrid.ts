@@ -264,7 +264,7 @@ export class NavGrid {
   /** So weit liegt der Geländeboden unter dem Basis-Modell tiefer (gleiche Auflösung wie heights), damit er nicht durchscheint. */
   readonly groundSink: Float32Array;
   /** Camp-Modelle (Mulde mit Felsring): Lage, Drehung um y, Maßstab waagrecht und senkrecht. */
-  campProps: { x: number; z: number; rot: number; hs: number; vs: number; r: number }[] = [];
+  campProps: { x: number; z: number; rot: number; hs: number; vs: number; r: number; niche: number }[] = [];
   /** Passung der Camp-Modelle: begehbare Zellen unter Felsen, Wandzellen unter dem Boden (beides soll 0 sein). */
   campFit: { id: string; rock: number; floor: number; turn: number; hs: number }[] = [];
 
@@ -525,7 +525,7 @@ export class NavGrid {
       }
       const { rot, hs } = best;
       const vs = hs * 0.6;
-      this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs, r: hs * 0.95 });
+      this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs, r: hs * 0.95, niche: r + 0.5 });
       this.campFit.push({ id: c.id, rock: best.rock, floor: best.floor, turn: Math.round(((rot - rot0) * 180) / Math.PI), hs: +hs.toFixed(1) });
       const co = Math.cos(rot);
       const si = Math.sin(rot);
@@ -540,8 +540,9 @@ export class NavGrid {
           if (t < -1) continue;
           const i = z * (N + 1) + x;
           const open = this.isOpen(x / R, z / R);
-          // über freien Wegen ist der Fels herausgeschnitten (models.ts): dort bleibt der Boden sichtbar
-          if (open && t > 0.08) continue;
+          // über Wegen ist das Modell herausgeschnitten (models.ts): Felsen überall, der Erdboden außerhalb der
+          // Nische des Camps. Dort bleibt das Gelände, wie es ist (Weg glatt, keine Kante)
+          if (open && (t > 0.08 || Math.hypot(wx, wz) > r + 0.5)) continue;
           // vorne taucht der Erdboden des Modells unter das Gelände: dort bleibt das Gelände oben
           if (t < -0.02) continue;
           sink[i] = Math.max(sink[i], 0.35);
