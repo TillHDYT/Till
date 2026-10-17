@@ -1,4 +1,4 @@
-"""Schneidet Elaras Grundangriff (lila Komet mit goldenem Schein, Splitter und Punkte bleiben kurz liegen) Bild für
+"""Schneidet den lila Kometen mit goldenem Schein (Elaras Q-Flug; Splitter und Punkte bleiben kurz liegen) Bild für
 Bild aus dem Vorlage-GIF aus, wie cut.py: Licht- und Schattenschicht je Bild in einer Bildtafel.
 
 Raum: Ursprung am Abwurfpunkt, u-Achse zum Punkt, an dem der Komet das Bild verlässt (entzerrt wie bei der Q,
@@ -79,8 +79,8 @@ for n, (a, m) in enumerate(zip(As, Ms)):
     r, c = divmod(n, cols)
     ia[r * h:(r + 1) * h, c * w:(c + 1) * w] = a
     im_[r * h:(r + 1) * h, c * w:(c + 1) * w] = m
-Image.fromarray(ia.astype(np.uint8)).save(f"{out}/elara_aa_add.jpg", quality=90)
-Image.fromarray((im_ * 255).astype(np.uint8)).save(f"{out}/elara_aa_mul.jpg", quality=90)
+Image.fromarray(ia.astype(np.uint8)).save(f"{out}/elara_comet_add.jpg", quality=90)
+Image.fromarray((im_ * 255).astype(np.uint8)).save(f"{out}/elara_comet_mul.jpg", quality=90)
 meta = {"frames": len(frames), "cols": cols, "rows": rows, "u0": u0, "u1": u1, "v0": v0, "v1": v1, "L": L, "arrive": ARRIVE}
-json.dump(meta, open(f"{out}/elara_aa_meta.json", "w"))
+json.dump(meta, open(f"{out}/elara_comet_meta.json", "w"))
 print(json.dumps(meta))

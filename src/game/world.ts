@@ -48,7 +48,9 @@ export type FxKind =
   | "shield"
   | "gold"
   | "qcast"
-  | "qdisc";
+  | "qdisc"
+  | "elq"
+  | "elzone";
 
 export type Fx = { type: FxKind; x: number; z: number; r?: number; color?: number; owner?: Unit; dur?: number; big?: boolean };
 
@@ -65,7 +67,7 @@ export type GameEvent =
   | { type: "end"; winner: 0 | 1 }
   | { type: "sound"; name: string; x: number; z: number };
 
-export type ProjVisual = "arrow" | "bolt" | "fireball" | "dagger" | "hook" | "bigarrow" | "turret" | "caster" | "siege" | "monster" | "dragon" | "baron";
+export type ProjVisual = "arrow" | "bolt" | "fireball" | "dagger" | "hook" | "bigarrow" | "turret" | "caster" | "siege" | "monster" | "dragon" | "baron" | "orb";
 
 export type Projectile = {
   id: number;
@@ -110,6 +112,9 @@ export type Area = {
   done: boolean;
 };
 
+/** Fläche, die eine Weile liegen bleibt und in festen Abständen wirkt (Elaras Heilkreis). */
+export type Zone = { id: number; owner: Unit; team: Side; x: number; z: number; radius: number; t0: number; until: number; next: number; tick: number; onTick: (z: Zone) => void };
+
 type Dot = { target: Unit; src: Unit; dps: number; until: number };
 
 export type SkillshotOpts = {
@@ -123,6 +128,8 @@ export type SkillshotOpts = {
   sharedHits?: Set<number>;
   champsOnly?: boolean;
   noStructures?: boolean;
+  /** fliegt immer geradeaus, auch wenn ein Gegner anvisiert ist */
+  straight?: boolean;
   onHit: (u: Unit, p: Projectile) => boolean | void;
 };
 
@@ -190,6 +197,7 @@ export class World {
   monsters: Monster[] = [];
   projectiles: Projectile[] = [];
   areas: Area[] = [];
+  zones: Zone[] = [];
   dots: Dot[] = [];
   events: GameEvent[] = [];
   fxQueue: Fx[] = [];
@@ -400,7 +408,7 @@ export class World {
       traveled: 0,
       range: o.range,
       width: o.width,
-      homing: this.lockedFor(owner, o.range, o.champsOnly),
+      homing: o.straight ? null : this.lockedFor(owner, o.range, o.champsOnly),
       visual: o.visual,
       color: o.color,
       hit: new Set(),
@@ -456,6 +464,11 @@ export class World {
     const l = this.lockedFor(owner, 99);
     if (l && !o.follow && Math.hypot(o.x - l.x, o.z - l.z) < 2) o = { ...o, follow: l };
     this.areas.push({ id: this.nextId++, owner, team: owner.team, t0: this.t, done: false, ...o });
+  }
+
+  /** Liegenbleibende Fläche: wirkt alle tick Sekunden, dur Sekunden lang (erstes Mal nach tick). */
+  zone(owner: Unit, x: number, z: number, radius: number, dur: number, tick: number, onTick: (z: Zone) => void) {
+    this.zones.push({ id: this.nextId++, owner, team: owner.team, x, z, radius, t0: this.t, until: this.t + dur, next: this.t + tick, tick, onTick });
   }
 
   /** Bewegt einen Punkt entlang der Linie zurück, bis er begehbar ist. */
@@ -1130,6 +1143,7 @@ export class World {
 
     this.updateProjectiles(dt);
     this.updateAreas();
+    this.updateZones();
     this.updateDots(dt);
     this.separate();
 
@@ -1924,11 +1938,22 @@ export class World {
         a.done = true;
         a.onTrigger(a);
         // Blutlachen (Malgor) bringen ihren eigenen Effekt mit
-        if (a.visual !== "blood" && a.visual !== "bloodbig") this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
+        if (a.visual !== "blood" && a.visual !== "bloodbig" && a.visual !== "comet") this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
         this.events.push({ type: "sound", name: a.visual === "meteor" ? "meteor" : "boom", x: a.x, z: a.z });
       }
     }
     if (this.areas.some((a) => a.done)) this.areas = this.areas.filter((a) => !a.done);
+  }
+
+  private updateZones() {
+    if (!this.zones.length) return;
+    for (const z of this.zones) {
+      while (z.next <= this.t && z.next <= z.until + 1e-6) {
+        z.onTick(z);
+        z.next += z.tick;
+      }
+    }
+    this.zones = this.zones.filter((z) => z.until > this.t);
   }
 
   private updateDots(dt: number) {

@@ -177,10 +177,22 @@ export class BotBrain implements Brain {
     return adv > 0.02 && myF > 0.38;
   }
 
+  /** Am stärksten verletzter Verbündeter (auch man selbst) in Reichweite, wenn er Heilung braucht. */
+  private hurtAlly(w: World, c: Champion, range: number) {
+    let best: Champion | null = null;
+    for (const a of w.alliesInRadius(c.team, c.x, c.z, range) as Champion[]) {
+      if (a.hp / a.stats.maxHp > 0.75) continue;
+      if (!best || a.hp / a.stats.maxHp < best.hp / best.stats.maxHp) best = a;
+    }
+    return best;
+  }
+
   private castAt(w: World, c: Champion, slot: number, tg: Unit) {
     const ab = c.def.abilities[slot];
     if (c.ranks[slot] <= 0 || c.cds[slot] > 0 || c.mana < c.manaFor(slot)) return false;
     if (Math.random() > this.cfg.useAbil) return false;
+    // Heilfläche: lieber auf einen verletzten Verbündeten, sonst auf den Gegner
+    if (ab.ai === "heal") tg = this.hurtAlly(w, c, ab.range) ?? tg;
     const d = dist(c, tg);
     if (ab.targeting === "self") {
       if (ab.radius && d > ab.radius + tg.radius * 0.5) return false;
@@ -431,6 +443,8 @@ export class BotBrain implements Brain {
         const tz = adc.z + fr.back.z * 2.5 + this.jitter.z * 0.5;
         const e = this.bestEnemy(w, c, 9);
         if (e && this.shouldFight(w, c, e)) return this.fight(w, c, e);
+        const hs = c.def.abilities.findIndex((a) => a.ai === "heal");
+        if (hs >= 0 && this.hurtAlly(w, c, c.def.abilities[hs].range)) this.castAt(w, c, hs, c);
         if (dist(c, { x: tx, z: tz }) > 2.5) c.order = { type: "move", x: tx, z: tz };
         else if (c.order.type === "move") c.order = { type: "none" };
         return;

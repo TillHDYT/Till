@@ -4,7 +4,7 @@ import { MONSTER_RADIUS, type V2 } from "./mapdata";
 
 export type Role = "top" | "jungle" | "mid" | "bot" | "support";
 export type Targeting = "self" | "dir" | "point" | "unit";
-export type AiUse = "poke" | "fight" | "farm" | "escape" | "engage" | "self";
+export type AiUse = "poke" | "fight" | "farm" | "escape" | "engage" | "self" | "heal";
 
 export type AbilityDef = {
   name: string;
@@ -534,13 +534,57 @@ export const CHAMPIONS: ChampDef[] = [
     color: "#b8a0ff",
     base: { hp: 540, mana: 400, ad: 48, armor: 24, mr: 30, as: 0.62, range: 11, ms: 6.7, hpReg: 1.4, manaReg: 2.4 },
     growth: { hp: 84, mana: 50, ad: 2.6, armor: 3.8, mr: 1.3, as: 2 },
-    levelOrder: [3, 1, 0, 2],
+    levelOrder: [3, 0, 1, 2],
     build: ["boots", "timestaff", "spiritcloak", "deathcap", "warmog", "swiftboots"],
     look: { body: 0x3a2a5a, accent: 0xd8c8ff, skin: 0xe8d0c0, hair: 0x2a2030, weapon: "staff", bulk: 0.95, cape: 0x4a3a7a },
     // Zauber (Elara_Attack.glb, 1,15-2,15 s der Mixamo-Animation): Hände zurück, dann nach vorne gestoßen, das Geschoss
     // fliegt beim Stoß (0,47 s); 1,2-mal so schnell abgespielt
     swing: { clip: 1.0 / 1.2, hit: 0.47 / 1.2 },
     abilities: [
+      {
+        name: "Mondsegen",
+        desc: "Schießt einen Kometen an eine Stelle. Er platzt am Boden: Verbündete werden geheilt, Gegner verletzt. 5 s lang bleibt ein Heilkreis liegen, der Verbündete darin heilt und Gegner leicht verletzt.",
+        icon: "💖",
+        targeting: "point",
+        range: 12,
+        radius: 3.5,
+        cd: [11, 10, 9, 8],
+        mana: [60, 70, 80, 90],
+        ai: "heal",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 12);
+          const heal = r4([40, 60, 80, 100], rank) + c.stats.ap * 0.2;
+          const dmg = r4([40, 65, 90, 115], rank) + c.stats.ap * 0.3;
+          // im Kreis: so viel insgesamt über 5 s (10 Mal je 0,5 s)
+          const zoneHeal = r4([60, 90, 120, 150], rank) + c.stats.ap * 0.3;
+          const zoneDmg = r4([40, 60, 80, 100], rank) + c.stats.ap * 0.25;
+          const R = 3.5;
+          // Flug des Kometen Bild für Bild aus dem Vorlage-GIF (flipfx.ts), so lange wie das Geschoss braucht
+          const delay = Math.max(0.3, Math.hypot(p.x - c.x, p.z - c.z) / 20);
+          c.anim.cast = 0.4;
+          w.fx({ type: "elq", x: p.x, z: p.z, owner: c, dur: delay });
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: R,
+            delay,
+            visual: "comet",
+            color: 0x7dff8a,
+            onTrigger: (a) => {
+              w.fx({ type: "elzone", x: a.x, z: a.z, r: R, owner: c, dur: 5 });
+              for (const u of w.alliesInRadius(c.team, a.x, a.z, R)) {
+                w.heal(u, heal);
+                w.fx({ type: "heal", x: u.x, z: u.z, owner: u });
+              }
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, R)) w.damage(c, u, dmg, "magic", { ability: true });
+              w.zone(c, a.x, a.z, R, 5, 0.5, (z) => {
+                for (const u of w.alliesInRadius(c.team, z.x, z.z, R)) w.heal(u, zoneHeal / 10);
+                for (const u of w.enemiesInRadius(c.team, z.x, z.z, R)) w.damage(c, u, zoneDmg / 10, "magic", { ability: true });
+              });
+            },
+          });
+        },
+      },
       {
         name: "Mondstrahl",
         desc: "Schickt einen Strahl Mondlicht los: Schaden und Verlangsamung beim ersten Gegner.",
@@ -573,50 +617,34 @@ export const CHAMPIONS: ChampDef[] = [
         },
       },
       {
-        name: "Heilendes Licht",
-        desc: "Heilt sich selbst und den am stärksten verletzten Verbündeten in der Nähe.",
-        icon: "💖",
-        targeting: "self",
-        range: 0,
-        radius: 9,
+        name: "Sternkugel",
+        desc: "Elara bekommt einen Schild und schleudert eine blaue Sternkugel: Sie platzt am ersten Gegner und verletzt ihn.",
+        icon: "🔵",
+        targeting: "dir",
+        range: 12,
+        width: 1.3,
         cd: [12, 11, 10, 9],
-        mana: [60, 70, 80, 90],
-        ai: "self",
-        cast: (w, c, _aim, rank) => {
-          const amt = r4([60, 90, 120, 150], rank) + c.stats.ap * 0.35;
-          c.anim.cast = 0.4;
-          w.heal(c, amt);
-          w.fx({ type: "heal", x: c.x, z: c.z, owner: c });
-          let best: Champion | null = null;
-          // alliesInRadius liefert nur Champions
-          for (const a of w.alliesInRadius(c.team, c.x, c.z, 9) as Champion[]) {
-            if (a === c) continue;
-            if (!best || a.hp / a.stats.maxHp < best.hp / best.stats.maxHp) best = a;
-          }
-          if (best) {
-            w.heal(best, amt);
-            w.fx({ type: "heal", x: best.x, z: best.z, owner: best });
-          }
-        },
-      },
-      {
-        name: "Schutzsegen",
-        desc: "Schild und kurz mehr Lauftempo für sich und Verbündete in der Nähe.",
-        icon: "🛡️",
-        targeting: "self",
-        range: 0,
-        radius: 6,
-        cd: [14, 13, 12, 11],
         mana: [50, 55, 60, 65],
         ai: "fight",
-        cast: (w, c, _aim, rank) => {
-          const amt = r4([50, 80, 110, 140], rank) + c.stats.ap * 0.4;
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
+          const dmg = r4([60, 95, 130, 165], rank) + c.stats.ap * 0.5;
           c.anim.cast = 0.35;
-          for (const a of w.alliesInRadius(c.team, c.x, c.z, 6)) {
-            w.shieldUnit(a, amt, 2.5);
-            w.addBuff(a, { id: "elaraE", until: w.t + 1.5, mods: { ms: 20 } });
-            w.fx({ type: "shield", x: a.x, z: a.z, owner: a });
-          }
+          w.shieldUnit(c, r4([60, 90, 120, 150], rank) + c.stats.ap * 0.4, 3);
+          w.skillshot(c, {
+            dx: d.dx,
+            dz: d.dz,
+            speed: 20,
+            range: 12,
+            width: 1.3,
+            straight: true,
+            visual: "orb",
+            color: 0x60a0ff,
+            onHit: (u) => {
+              w.damage(c, u, dmg, "magic", { ability: true });
+              return true;
+            },
+          });
         },
       },
       {
