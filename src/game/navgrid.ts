@@ -325,6 +325,11 @@ export class NavGrid {
       const mz = Math.floor(i / n) + 0.5;
       const dm = distToPolyline({ x: mx, z: mz }, LANES.mid) + (fbm(mx * 0.08 + 21, mz * 0.08) - 0.5) * 9;
       this.river[i] *= smooth(LANE_WIDTH.mid / 2 + 6, LANE_WIDTH.mid / 2 + 30, dm);
+      // an Top- und Bot-Lane ebenso, nur kürzer (dort beginnt der Fluss ohnehin erst vor den Gruben)
+      for (const id of ["top", "bot"] as const) {
+        const dl = distToPolyline({ x: mx, z: mz }, LANES[id]) + (fbm(mx * 0.08 + 5, mz * 0.08 + 9) - 0.5) * 6;
+        this.river[i] *= smooth(LANE_WIDTH[id] / 2 + 3, LANE_WIDTH[id] / 2 + 14, dl);
+      }
     }
 
     // Büsche: begehbar, merken pro Zelle.

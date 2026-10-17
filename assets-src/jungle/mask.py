@@ -146,7 +146,14 @@ water = np.where(blue, water, water[::-1, ::-1]) & ~full
 BAND = float(sys.argv[5]) if len(sys.argv) > 5 else 15.0
 along = (xx + zz) / np.sqrt(2)
 wob = np.sin(along * 0.09) * 2.5 + np.sin(along * 0.23 + 1.0) * 1.5
-band = np.abs(zz - xx) / np.sqrt(2) < BAND + wob
+# zu den Lane-Ecken (oben links, unten rechts) hin läuft das Flussbett aus: dort ist auf der Kluft trockenes Gras,
+# das Wasser beginnt erst vor Baron- und Drachengrube
+L_DIAG = MAP * np.sqrt(2)
+def sstep(a, b, x):
+    t = np.clip((x - a) / (b - a), 0, 1)
+    return t * t * (3 - 2 * t)
+taper = sstep(0.22 * L_DIAG, 0.33 * L_DIAG, along) * sstep(0.22 * L_DIAG, 0.33 * L_DIAG, L_DIAG - along)
+band = np.abs(zz - xx) / np.sqrt(2) < (BAND + wob) * taper
 # Drachen- und Baron-Grube stehen unter Wasser (wie die Drachengrube in LoL)
 (dX, dY), dR = CAMPS["dragon"]
 for cx, cz in (lol(dX, dY), (MAP - lol(dX, dY)[0], MAP - lol(dX, dY)[1])):

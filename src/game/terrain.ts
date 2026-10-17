@@ -310,6 +310,9 @@ function groundMask(grid: NavGrid, res: number) {
 /** Länge einer Kachel der Wegtextur entlang der Lane und Breite, über die sie quer reicht (Einheiten). */
 const PATH_TILE = 15;
 
+/** Bereich quer zur Lane (±halb, Einheiten), den die Lane-Koordinaten abdecken; weiter außen zählt die Lane nicht. */
+const LANE_ACROSS = 40;
+
 /** Ecken abrunden (Chaikin), damit die Wegtextur in den Lane-Kurven nicht springt. */
 function smoothLine(pts: { x: number; z: number }[], iter = 3) {
   let p = pts;
@@ -345,7 +348,8 @@ function laneCoords(grid: NavGrid, res: number) {
     for (let px = 0; px < res; px++) {
       const x = (px + 0.5) * k;
       const o = (py * res + px) * 4;
-      if (sLane(x, z) < 0.005) continue;
+      const lw = sLane(x, z);
+      if (lw < 0.005) continue;
       let best = Infinity;
       let along = 0;
       let across = 0;
@@ -367,8 +371,9 @@ function laneCoords(grid: NavGrid, res: number) {
       const ang = (along / PATH_TILE) * Math.PI * 2;
       data[o] = Math.round((Math.cos(ang) * 0.5 + 0.5) * 255);
       data[o + 1] = Math.round((Math.sin(ang) * 0.5 + 0.5) * 255);
-      data[o + 2] = Math.round(Math.max(0.02, Math.min(0.98, 0.5 + across / PATH_TILE)) * 255);
-      data[o + 3] = 255;
+      data[o + 2] = Math.round(Math.max(0, Math.min(1, 0.5 + across / LANE_ACROSS)) * 255);
+      // A: wie stark die Lane-Ausrichtung gilt (weich auslaufend, außen Welt-Ausrichtung, keine Naht)
+      data[o + 3] = Math.round(Math.min(1, (lw - 0.005) / 0.3) * 255);
     }
   }
   const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -388,6 +393,11 @@ function loadBaseFloor(): THREE.Texture {
   t.wrapT = THREE.ClampToEdgeWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
+  return t;
+}
+
+function mirroredT(t: THREE.Texture) {
+  t.wrapT = THREE.MirroredRepeatWrapping;
   return t;
 }
 
@@ -675,7 +685,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
   const groundMat = new THREE.MeshLambertMaterial({ map: tex });
   const grassUniforms = {
     uGrass: { value: loadGrass() },
-    uPath: { value: loadGrass(pathUrl) },
+    uPath: { value: mirroredT(loadGrass(pathUrl)) },
     uStone: { value: loadGrass(stoneUrl) },
     uRock: { value: loadGrass(rockUrl) },
     uGMask: { value: groundMask(grid, high ? 512 : 320) },
@@ -711,18 +721,19 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
           if (gMask.b > 0.004) {
             vec4 lc = texture2D(uLane, vFogW.xz / ${MAP.toFixed(1)});
             vec2 wp = vFogW.xz / ${PATH_TILE.toFixed(1)};
-            vec2 pp = wp;
-            vec2 ddx = dFdx(wp);
-            vec2 ddy = dFdy(wp);
-            if (lc.a > 0.5) {
-              pp = vec2(atan(lc.g * 2.0 - 1.0, lc.r * 2.0 - 1.0) / 6.2831853, lc.b);
+            vec3 worldCol = texture2D(uPath, wp).rgb;
+            vec3 laneCol = worldCol;
+            if (lc.a > 0.004) {
+              // quer zur Lane gespiegelt fortgesetzt (sonst endet die Textur am Rand in einer langen Linie)
+              vec2 pp = vec2(atan(lc.g * 2.0 - 1.0, lc.r * 2.0 - 1.0) / 6.2831853, (lc.b - 0.5) * ${(LANE_ACROSS / PATH_TILE).toFixed(3)} + 0.5);
               // Ableitungen ohne den Sprung beim Umlauf, sonst wählt die Mipmap an der Naht die kleinste Stufe
-              ddx = dFdx(pp);
-              ddy = dFdy(pp);
+              vec2 ddx = dFdx(pp);
+              vec2 ddy = dFdy(pp);
               ddx.x -= floor(ddx.x + 0.5);
               ddy.x -= floor(ddy.x + 0.5);
+              laneCol = textureGrad(uPath, pp, ddx, ddy).rgb;
             }
-            vec3 pathCol = textureGrad(uPath, pp, ddx, ddy).rgb * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
+            vec3 pathCol = mix(worldCol, laneCol, smoothstep(0.0, 1.0, lc.a)) * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
             diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
           }
           // Basis: Boden wie auf der Kluft (assets-src/base-floor), Rot gespiegelt. Damit er nicht wie ein eingefügtes

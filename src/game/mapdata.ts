@@ -18,9 +18,10 @@ export const mirror = (p: V2): V2 => ({ x: MAP - p.x, z: MAP - p.z });
 
 // Lane-Mittellinien von der blauen Nexus bis zur roten Nexus.
 export const LANES: Record<LaneId, V2[]> = {
-  top: [v(24, 176), v(16, 160), v(14, 146), v(14, 36), v(17, 23), v(23, 17), v(36, 14), v(146, 14), v(160, 16), v(176, 24)],
+  // Ecke wie auf der Kluft weiter außen (sonst bleibt zwischen Lane und Fluss eine große leere Fläche)
+  top: [v(24, 176), v(16, 160), v(14, 146), v(14, 33), v(15.5, 20), v(20, 15.5), v(33, 14), v(146, 14), v(160, 16), v(176, 24)],
   mid: [v(24, 176), v(36, 164), v(46, 154), v(154, 46), v(164, 36), v(176, 24)],
-  bot: [v(24, 176), v(40, 184), v(54, 186), v(164, 186), v(177, 183), v(183, 177), v(186, 164), v(186, 54), v(184, 40), v(176, 24)],
+  bot: [v(24, 176), v(40, 184), v(54, 186), v(167, 186), v(180, 184.5), v(184.5, 180), v(186, 167), v(186, 54), v(184, 40), v(176, 24)],
 };
 
 export const LANE_WIDTH: Record<LaneId, number> = { top: 13, mid: 12, bot: 13 };
@@ -97,10 +98,13 @@ export const MONSTER_SIZE = 2;
 /** Trefferzone (Radius) der Dschungelmonster wächst mit, damit niemand im Modell steht. */
 export const MONSTER_RADIUS = 1.5;
 
-/** Feuerschalen auf den Mauerecken, wo der Fluss an die Mid-Lane stößt (wie auf der Kluft), Rot gespiegelt. */
+/** Feuerschalen (wie auf der Kluft): auf den Mauerecken an den Flussmündungen der Mid-Lane und am Ufer der Lane-Ecken, Rot gespiegelt. */
 export const RIVER_BRAZIERS: V2[] = [
   { x: (149 * MAP) / 300, z: (130 * MAP) / 300 },
   { x: (131 * MAP) / 300, z: (148 * MAP) / 300 },
+  // entlang des inneren Rands der Lane-Ecke (Ufer zum Fluss)
+  { x: (43 * MAP) / 300, z: (27 * MAP) / 300 },
+  { x: (29 * MAP) / 300, z: (38 * MAP) / 300 },
 ].flatMap((p) => [p, mirror(p)]);
 
 export const DRAGON_POS = lol(9866, 4414);
@@ -120,6 +124,10 @@ export const CAMPS: CampSpec[] = [
 
 // Büsche (Gras zum Verstecken), Kreise.
 const BLUE_BRUSH: { p: V2; r: number }[] = [
+  // Büsche am inneren Rand der Lane-Ecke (Top, für Bot gespiegelt)
+  { p: { x: (49 * MAP) / 300, z: (31 * MAP) / 300 }, r: 3 },
+  { p: { x: (36 * MAP) / 300, z: (41 * MAP) / 300 }, r: 2.8 },
+  { p: { x: (31 * MAP) / 300, z: (55 * MAP) / 300 }, r: 2.6 },
   { p: lol(1626, 9860), r: 3 },
   { p: lol(4356, 7290), r: 2.8 },
   { p: lol(2541, 7609), r: 2.6 },
