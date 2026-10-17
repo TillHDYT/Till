@@ -766,7 +766,8 @@ export const CHAMPIONS: ChampDef[] = [
             x: c.x,
             z: c.z,
             radius: 6.5,
-            delay: 0.35,
+            // Aufprall nach dem Sprung in der Animation (models.ts, Tank_R)
+            delay: 0.85,
             visual: "quake",
             color: 0x9fd070,
             follow: c,

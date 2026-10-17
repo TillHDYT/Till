@@ -49,6 +49,8 @@ import kiraAttack1Url from "../assets/models/Kira_Attack1.glb";
 import tankUrl from "../assets/models/Tank.glb";
 import tankIdleUrl from "../assets/models/Tank_Idle.glb";
 import tankAttackUrl from "../assets/models/Tank_Attack.glb";
+import tankQUrl from "../assets/models/Tank_Q.glb";
+import tankRUrl from "../assets/models/Tank_R.glb";
 import tankDeathUrl from "../assets/models/Tank_Death.glb";
 import warrokUrl from "../assets/models/Warrok.glb";
 import warrokIdleUrl from "../assets/models/Warrok_Idle.glb";
@@ -248,6 +250,14 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
     // nach 5 s Stillstehen in Elaras Stehhaltung wechseln
     idle2: { url: elaraIdleUrl, file: "src/assets/models/Elara_Idle.glb (Stehen von Elara)", fremd: true },
+    // Q: Wurf des Hakens nach ~0,36 s (ab 0,9 s geschnitten); R: Sprung und Aufprall, Landung nach ~0,84 s
+    // (ab 0,5 s, auf der Stelle) — das Beben in champions.ts löst genau dann aus
+    casts: [
+      { url: tankQUrl, file: "src/assets/models/Tank_Q.glb (aus Tank Fähigkeit Q Animation.fbx, ab 0,9 s)", rate: 1.5 },
+      null,
+      null,
+      { url: tankRUrl, file: "src/assets/models/Tank_R.glb (aus Tank Fähigkeit R Animation.fbx, ab 0,5 s, auf der Stelle)", rate: 1.7 },
+    ],
     attack: { url: tankAttackUrl, file: "src/assets/models/Tank_Attack.glb (aus Tank Schlag Animation.fbx)" },
     death: { url: tankDeathUrl, file: "src/assets/models/Tank_Death.glb (aus Tank Todes Animation.fbx)" },
   },
