@@ -105,6 +105,9 @@ export const RIVER_BRAZIERS: V2[] = [
   // entlang des inneren Rands der Lane-Ecke (Ufer zum Fluss)
   { x: (43 * MAP) / 300, z: (27 * MAP) / 300 },
   { x: (29 * MAP) / 300, z: (38 * MAP) / 300 },
+  // an der Westseite der langen Felswand am Baron-Flussarm
+  { x: (39 * MAP) / 300, z: (58 * MAP) / 300 },
+  { x: (48 * MAP) / 300, z: (72 * MAP) / 300 },
 ].flatMap((p) => [p, mirror(p)]);
 
 export const DRAGON_POS = lol(9866, 4414);
@@ -128,6 +131,9 @@ const BLUE_BRUSH: { p: V2; r: number }[] = [
   { p: { x: (49 * MAP) / 300, z: (31 * MAP) / 300 }, r: 3 },
   { p: { x: (36 * MAP) / 300, z: (41 * MAP) / 300 }, r: 2.8 },
   { p: { x: (31 * MAP) / 300, z: (55 * MAP) / 300 }, r: 2.6 },
+  // Baron-Seite (Drache gespiegelt): Busch im Flussarm und Busch zwischen Sichelfelsen und Grube
+  { p: { x: (61 * MAP) / 300, z: (61 * MAP) / 300 }, r: 2.4 },
+  { p: { x: (75 * MAP) / 300, z: (47 * MAP) / 300 }, r: 3 },
   { p: lol(1626, 9860), r: 3 },
   { p: lol(4356, 7290), r: 2.8 },
   { p: lol(2541, 7609), r: 2.6 },

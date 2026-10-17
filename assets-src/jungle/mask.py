@@ -176,6 +176,31 @@ def rle(mask):
     return out
 
 
+# Baron-Seite wie auf der neuen Kluft (Vorlagebilder): Flussarm von der Grube nach Nordwesten bis vor die Lane-Ecke,
+# lange gebogene Felswand im Westen, Sichelfelsen im Norden. Koordinaten bei MAP 300, Drachenseite punktgespiegelt.
+def capsule(pts, w, noise=1.5):
+    d = np.full((MAP, MAP), 1e9)
+    for (ax, az), (bx, bz) in zip(pts[:-1], pts[1:]):
+        ax, az, bx, bz = (c * MAP / 300 for c in (ax, az, bx, bz))
+        dx, dz = bx - ax, bz - az
+        t = np.clip(((xx - ax) * dx + (zz - az) * dz) / (dx * dx + dz * dz), 0, 1)
+        d = np.minimum(d, np.hypot(xx - (ax + dx * t), zz - (az + dz * t)))
+    wob = np.sin(xx * 0.41 + zz * 0.17) * 0.5 + np.sin(zz * 0.37 - xx * 0.23) * 0.5
+    if callable(w):
+        return d < w(xx, zz) / 2 * MAP / 300 + wob * noise
+    return d < w / 2 * MAP / 300 + wob * noise
+
+def mirrored(m):
+    return m | m[::-1, ::-1]
+
+# Flussarm: breit an der Grube, zur Spitze schmaler und rund auslaufend
+arm_pts = [(70, 78), (66, 66), (59, 57), (52, 49)]
+arm = mirrored(capsule(arm_pts, lambda x, z: np.clip(6 + (np.hypot(x - 52, z - 49) * MAP / 300) * 0.35, 6, 15), 1.0))
+west_rock = mirrored(capsule([(38, 55), (44, 62), (49, 69), (52, 77)], 6.5))
+crescent = mirrored(capsule([(61, 45), (64, 38), (72, 33.5), (84, 33)], 6.5))
+full = (full & ~arm) | west_rock | crescent
+water = (water | arm) & ~full
+
 rows = rle(full)
 pool = rle(water)
 with open(out, "w") as f:

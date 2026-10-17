@@ -401,6 +401,32 @@ function mirroredT(t: THREE.Texture) {
   return t;
 }
 
+/** 1 in Zellen bis r Zellen neben Wasser (Fluss > 0.3), sonst 0. */
+function riverNeighbourhood(grid: NavGrid, r: number) {
+  const n = grid.n;
+  const src = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) src[i] = grid.river[i] > 0.3 ? 1 : 0;
+  const tmp = new Float32Array(n * n);
+  const out = new Uint8Array(n * n);
+  for (let z = 0; z < n; z++) {
+    let acc = 0;
+    for (let x = -r; x < n; x++) {
+      if (x + r < n) acc += src[z * n + x + r];
+      if (x - r - 1 >= 0) acc -= src[z * n + x - r - 1];
+      if (x >= 0) tmp[z * n + x] = acc;
+    }
+  }
+  for (let x = 0; x < n; x++) {
+    let acc = 0;
+    for (let z = -r; z < n; z++) {
+      if (z + r < n) acc += tmp[(z + r) * n + x];
+      if (z - r - 1 >= 0) acc -= tmp[(z - r - 1) * n + x];
+      if (z >= 0) out[z * n + x] = acc > 0 ? 1 : 0;
+    }
+  }
+  return out;
+}
+
 /** Läd die gemalte Grastextur (kachelbar). */
 export function loadGrass(url: string = grassUrl): THREE.Texture {
   const t = new THREE.TextureLoader().load(url);
@@ -939,12 +965,19 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     if (CAMPS.some((cp) => CAMP_PIT[cp.kind] && Math.hypot(cp.pos.x - x, cp.pos.z - z) < CAMP_PIT[cp.kind]! + 0.6 + 2.8 * s)) return;
     buckets[kind][chunkOf(x, z)].push({ m, c });
   };
+  // Felswände am Fluss rund um Baron und Drache (wie auf der Kluft): graue Felsen statt Wald
+  const nearRiver = riverNeighbourhood(grid, 9);
+  const rocky = (x: number, z: number) => {
+    if (Math.hypot(x - BARON_POS.x, z - BARON_POS.z) > 46 && Math.hypot(x - DRAGON_POS.x, z - DRAGON_POS.z) > 46) return false;
+    return nearRiver[Math.min(grid.n - 1, Math.floor(z)) * grid.n + Math.min(grid.n - 1, Math.floor(x))] > 0;
+  };
   for (let gz = 0; gz < MAP; gz += step) {
     for (let gx = 0; gx < MAP; gx += step) {
       const x = gx + rand() * step;
       const z = gz + rand() * step;
       const sd = grid.sdAt(x, z);
       if (sd > -1.1) continue;
+      if (rocky(x, z)) continue;
       if (FOUNTAIN.some((f) => Math.hypot(f.x - x, f.z - z) < 13)) continue;
       // Basismauer: nur Stein, keine Bäume
       if (grid.base[Math.min(grid.n - 1, Math.floor(z)) * grid.n + Math.min(grid.n - 1, Math.floor(x))] >= 0) continue;
@@ -1004,10 +1037,36 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     const m = mat4(x, grid.heightAt(x, z) - 0.2 * s, z, s * (0.9 + rand() * 0.5), s * (0.7 + rand() * 0.5), s, (rand() - 0.5) * 0.4, rand() * 6, (rand() - 0.5) * 0.4);
     rockBuckets[i % 2][chunkOf(x, z)].push(m);
   }
+  // Felswände am Fluss: dicht mit großen, hellgrauen Felsen besetzt (lila Adern wie am Baron auf der Kluft)
+  const riverRocks: THREE.Matrix4[][][] = boulders.map(() => Array.from({ length: CH * CH }, () => []));
+  const riverRockMat = new THREE.MeshLambertMaterial({ map: texture(rockUrl, true), vertexColors: true, color: new THREE.Color(1.5, 1.5, 1.5) });
+  fog.patch(riverRockMat, (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <color_fragment>",
+      `#include <color_fragment>
+      // dunkle Risse im Fels leuchten lila
+      vec3 rc = diffuseColor.rgb;
+      float lum = dot(rc, vec3(0.333));
+      // grünstichigen Fels entsättigen (heller grauer Stein), nur die dunkelsten Risse lila
+      diffuseColor.rgb = mix(rc, vec3(lum) * vec3(0.97, 0.97, 1.03), 0.92);
+      float crack = smoothstep(0.1, 0.04, lum);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.45, 0.2, 0.75), crack * 0.45);`,
+    );
+  }, "riverrock");
+  for (let gz = 0; gz < MAP; gz += 1.7) {
+    for (let gx = 0; gx < MAP; gx += 1.7) {
+      const x = gx + (rand() - 0.5) * 1.2;
+      const z = gz + (rand() - 0.5) * 1.2;
+      if (grid.sdAt(x, z) > -0.4 || !rocky(x, z)) continue;
+      const s = 1.0 + rand() * 1.1;
+      const m = mat4(x, grid.heightAt(x, z) - 0.35 * s, z, s * (1 + rand() * 0.5), s * (0.8 + rand() * 0.7), s * (1 + rand() * 0.4), (rand() - 0.5) * 0.5, rand() * 6, (rand() - 0.5) * 0.5);
+      riverRocks[rand() < 0.5 ? 0 : 1][chunkOf(x, z)].push(m);
+    }
+  }
   boulders.forEach((geo, k) => {
-    for (const list of rockBuckets[k]) {
+    for (const [list, mat] of [...rockBuckets[k].map((l) => [l, rockMat] as const), ...riverRocks[k].map((l) => [l, riverRockMat] as const)]) {
       if (!list.length) continue;
-      const im = new THREE.InstancedMesh(geo, rockMat, list.length);
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((m, j) => im.setMatrixAt(j, m));
       im.instanceMatrix.needsUpdate = true;
       im.computeBoundingSphere();
