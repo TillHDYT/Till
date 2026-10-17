@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { applyCameraCut } from "./camcut";
+import { BloodFx } from "./bloodfx";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
 import { FOUNTAIN, MAP, type V2 } from "./mapdata";
@@ -62,6 +63,7 @@ export class View {
   private structs = new Map<number, StructView>();
   private minionMesh: Record<string, THREE.InstancedMesh> = {};
   private projs = new Map<number, THREE.Object3D>();
+  private blood = new BloodFx();
   private areas = new Map<number, { ring: THREE.Mesh; disc: THREE.Mesh; meteor: THREE.Object3D | null }>();
   private auras: { owner: Unit; until: number; color: THREE.Color }[] = [];
   private time = 0;
@@ -97,6 +99,7 @@ export class View {
     scene.add(this.particles.points);
     this.ground = new GroundFx();
     scene.add(this.ground.group);
+    scene.add(this.blood.group);
     this.indicators = new Indicators();
     scene.add(this.indicators.group);
 
@@ -345,6 +348,7 @@ export class View {
     this.syncStructures(dt);
     this.syncProjectiles(dt);
     this.syncAreas();
+    this.blood.update(dt);
 
     // Auren
     for (const a of this.auras) {
@@ -670,6 +674,9 @@ export class View {
         o = m;
         break;
       }
+      case "orb":
+        o = this.blood.makeOrb(p.color);
+        break;
       default: {
         const grp = new THREE.Group();
         const m = new THREE.Mesh(G.sphere, basic(p.color));
@@ -699,7 +706,8 @@ export class View {
       const owner = p.owner;
       const visible = p.team === this.playerTeam || p.team === 2 || owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
       o.visible = visible;
-      const y = g.groundAt(p.x, p.z) + p.y;
+      // Blutkugel sinkt im Flug zum Boden hin ab
+      const y = g.groundAt(p.x, p.z) + (p.visual === "orb" ? p.y - 0.75 * Math.min(1, p.traveled / Math.max(0.1, p.range)) : p.y);
       if (p.visual === "turret" || p.visual === "arrow") {
         // in Flugrichtung ausrichten, auch nach oben und unten (Pfeile im Bogen)
         const prev = o.userData.prev as THREE.Vector3 | undefined;
@@ -710,9 +718,8 @@ export class View {
         o.position.set(p.x, y, p.z);
         o.rotation.y = Math.atan2(p.dx, p.dz);
       }
+      if (p.visual === "orb") this.blood.tickOrb(p.id, p.x, y, p.z, p.color, visible);
       if (visible) {
-        // Blutkugel: Schweif aus Funken in der Farbe der Kugel
-        if (p.visual === "orb") for (let n = 0; n < 2; n++) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.2, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 1.2, new THREE.Color(p.color), 0.55, 0.45, 0);
         if (p.visual === "fireball" && Math.random() < 0.9) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.5, 0.8, (Math.random() - 0.5) * 1.5, new THREE.Color(0xff7a20), 0.7, 0.35, 0);
         if (p.visual === "turret") {
           const tc = new THREE.Color(TEAM_GLOW[p.team === 1 ? 1 : 0]);
@@ -745,6 +752,10 @@ export class View {
       if (chain) {
         this.scene.remove(chain);
         this.hookChains.delete(id);
+      }
+      if (o.userData.visual === "orb") {
+        this.blood.endOrb(id);
+        continue;
       }
       // Einschlag
       if (o.visible) {
@@ -812,8 +823,10 @@ export class View {
       this.scene.add(m);
       return m;
     };
-    const ring = mk(new THREE.RingGeometry(0.93, 1, 48), 0.9);
-    const disc = mk(new THREE.CircleGeometry(1, 40), 0.3);
+    // Blutkugel: keine Vorschau am Boden (wie im Vorbild), die Lache erscheint erst beim Aufschlag
+    const hidden = a.visual === "blood";
+    const ring = mk(new THREE.RingGeometry(0.93, 1, 48), hidden ? 0 : 0.9);
+    const disc = mk(new THREE.CircleGeometry(1, 40), hidden ? 0 : 0.3);
     let meteor: THREE.Object3D | null = null;
     if (a.visual === "meteor") {
       const grp = new THREE.Group();
@@ -856,11 +869,9 @@ export class View {
           this.ground.ring(f.x, y, f.z, 0.3, f.r ?? 2, col, 0.3, 0.7);
           break;
         case "pool":
-          // Blutlache: rote Fläche mit Rand, die eine Weile liegen bleibt, dazu aufsteigende Funken
-          this.ground.ring(f.x, y, f.z, f.r ?? 3, f.r ?? 3, col, f.dur ?? 1.4, 0.5, true);
-          this.ground.ring(f.x, y, f.z, (f.r ?? 3) * 0.9, f.r ?? 3, col, f.dur ?? 1.4, 0.95);
-          P.burst(f.x, y + 0.6, f.z, col, 28, 4, 0.6, 0.7);
-          P.ring(f.x, y + 0.2, f.z, (f.r ?? 3) * 0.85, col, 24, 0.45, 0.9, 0.5);
+          // Blutlache (Malgor): dunkle Scheibe mit rotem Rand, Sterne und Schmetterlinge (bloodfx.ts)
+          this.blood.pool(f.x, y, f.z, f.r ?? 3, f.dur ?? 1.2);
+          P.burst(f.x, y + 0.5, f.z, 0xfff0f4, 8, 3, 0.3, 0.3, 0);
           break;
         case "aura":
           if (f.owner) this.auras.push({ owner: f.owner, until: w.t + (f.dur ?? 3), color: new THREE.Color(col) });

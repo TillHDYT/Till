@@ -228,7 +228,7 @@ export const CHAMPIONS: ChampDef[] = [
             visual: "blood",
             color: 0xff2030,
             onTrigger: (a) => {
-              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff2030, owner: c, dur: 1.4 });
+              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff2030, owner: c, dur: 1.2 });
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.slow(u, 0.3, 1.5);
@@ -286,7 +286,7 @@ export const CHAMPIONS: ChampDef[] = [
             z: p.z,
             radius: 5,
             delay: 0.9,
-            visual: "light",
+            visual: "bloodbig",
             color: 0xff2030,
             onTrigger: (a) => {
               w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff1a20, owner: c, dur: 2.2 });

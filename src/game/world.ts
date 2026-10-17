@@ -1881,7 +1881,8 @@ export class World {
       if (this.t >= a.t0 + a.delay) {
         a.done = true;
         a.onTrigger(a);
-        this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
+        // Blutlachen (Malgor) bringen ihren eigenen Effekt mit
+        if (a.visual !== "blood" && a.visual !== "bloodbig") this.addFx({ type: "explode", x: a.x, z: a.z, r: a.radius, color: a.color, big: a.visual === "meteor" });
         this.events.push({ type: "sound", name: a.visual === "meteor" ? "meteor" : "boom", x: a.x, z: a.z });
       }
     }
