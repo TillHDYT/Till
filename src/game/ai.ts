@@ -331,6 +331,7 @@ export class BotBrain implements Brain {
     }
     let best: Monster | null = null;
     let bd = Infinity;
+    let bestDist = Infinity;
     for (const m of w.monsters) {
       if (!m.alive || m.resetting) continue;
       const camp = CAMPS.find((k) => k.id === m.camp);
@@ -339,15 +340,18 @@ export class BotBrain implements Brain {
         // gegnerischer Jungle nur, wenn stark genug
         if (c.level < 8 || this.count(w, 1 - team, m.x, m.z, 25) > 0) continue;
       }
-      let d = dist(m, c);
-      if (camp.side !== team) d += 30;
+      // eigene Camps bevorzugen: fremde (auch das Flussmonster) zählen 30 weiter weg. Nur für die Auswahl, nicht für
+      // die Frage, ob er schon nah genug zum Angreifen ist (sonst läuft er ewig hin und her)
+      const real = dist(m, c);
+      const d = camp.side !== team ? real + 30 : real;
       if (d < bd) {
         bd = d;
+        bestDist = real;
         best = m;
       }
     }
     if (best) {
-      if (bd > 6) {
+      if (bestDist > 6) {
         c.order = { type: "move", x: best.x, z: best.z };
         return;
       }
