@@ -39,19 +39,20 @@ export type StructureSpec =
   | { kind: "inhib"; team: Team; lane: LaneId; pos: V2 }
   | { kind: "nexus"; team: Team; pos: V2 };
 
-// Gebäude an den LoL-Positionen; die in der Basis genau auf ihren Sockeln im Basisboden (assets-src/base-floor)
+// Gebäude an den LoL-Positionen; Inhibitoren und Inhib-Türme wie in LoL an den Treppen des Basis-Modells
+// (assets-src/base-model): Turm vor der Treppe auf der Lane, Inhibitor direkt dahinter in der Basis
 const BLUE_STRUCTS: StructureSpec[] = [
   { kind: "nexus", team: 0, pos: lol(1543, 1661) },
   { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(1724, 2242) },
   { kind: "turret", team: 0, lane: "base", tier: "nexus", pos: lol(2125, 1760) },
-  { kind: "inhib", team: 0, lane: "top", pos: lol(1230, 3593) },
-  { kind: "inhib", team: 0, lane: "mid", pos: lol(3213, 3251) },
-  { kind: "inhib", team: 0, lane: "bot", pos: lol(3537, 1243) },
-  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: lol(1192, 4254) },
-  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: lol(3588, 3695) },
-  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: lol(4290, 1233) },
+  { kind: "inhib", team: 0, lane: "top", pos: { x: 25, z: 207.5 } },
+  { kind: "inhib", team: 0, lane: "mid", pos: { x: 81.6, z: 218.4 } },
+  { kind: "inhib", team: 0, lane: "bot", pos: { x: 96.5, z: 275 } },
+  { kind: "turret", team: 0, lane: "top", tier: "inhib", pos: { x: 25, z: 192.5 } },
+  { kind: "turret", team: 0, lane: "mid", tier: "inhib", pos: { x: 91.4, z: 208.6 } },
+  { kind: "turret", team: 0, lane: "bot", tier: "inhib", pos: { x: 111.5, z: 275 } },
   { kind: "turret", team: 0, lane: "top", tier: "inner", pos: lol(1512, 6699) },
-  { kind: "turret", team: 0, lane: "mid", tier: "inner", pos: lol(5048, 4812) },
+  { kind: "turret", team: 0, lane: "mid", tier: "inner", pos: { x: 105.5, z: 194.5 } },
   { kind: "turret", team: 0, lane: "bot", tier: "inner", pos: lol(6919, 1483) },
   { kind: "turret", team: 0, lane: "top", tier: "outer", pos: lol(981, 10441) },
   { kind: "turret", team: 0, lane: "mid", tier: "outer", pos: lol(5846, 6396) },

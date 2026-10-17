@@ -44,11 +44,50 @@ samp = [top(x, y) for x in np.linspace(-0.95, 0.95, 60) for y in np.linspace(-0.
 med = float(np.median([s for s in samp if s is not None]))
 print("Median Oberfläche", med)
 
+# Treppen auf die Lanes: das Modell wird weich verzogen (Thin-Plate), damit Top-, Mid- und Bot-Treppe genau dort
+# liegen, wo die Lane in die Basis läuft (Welt-Koordinaten, Quelle -> Ziel). Der Rest bleibt, wo er ist.
+WARP = [
+    ((34.5, 200.0), (25.0, 200.0)),   # Top-Treppe auf die Top-Lane (x 25)
+    ((16.0, 198.0), (13.0, 198.0)),   # Ecke oben links rückt mit
+    ((13.0, 240.0), (12.0, 240.0)),
+    ((75.0, 197.0), (73.0, 197.0)),
+    ((93.0, 212.0), (86.5, 213.5)),   # Mid-Treppe auf die Mid-Lane (x + z = 300), etwas nach innen wie auf der Kluft
+    ((104.0, 274.0), (104.0, 275.0)),  # Bot-Treppe auf die Bot-Lane (z 275)
+    ((11.0, 287.0), (11.0, 287.0)),   # Brunnen fest
+    ((60.0, 250.0), (60.0, 250.0)),
+    ((60.0, 290.0), (60.0, 290.0)),
+    ((100.0, 290.0), (100.0, 290.0)),
+    ((100.0, 240.0), (100.0, 240.0)),
+    ((45.0, 225.0), (45.0, 225.0)),
+]
+def tps(pairs, lam=1.0):
+    C = np.array([a for a, _ in pairs]) / 100.0
+    D = np.array([b for _, b in pairs]) / 100.0 - C
+    n = len(C)
+    K = lambda r: np.where(r > 0, r * r * np.log(r + 1e-12), 0.0)
+    R = np.hypot(C[:, None, 0] - C[None, :, 0], C[:, None, 1] - C[None, :, 1])
+    A = np.zeros((n + 3, n + 3))
+    A[:n, :n] = K(R) + np.eye(n) * lam * 1e-3
+    A[:n, n] = 1
+    A[:n, n + 1:] = C
+    A[n, :n] = 1
+    A[n + 1:, :n] = C.T
+    W = np.linalg.solve(A, np.vstack([D, np.zeros((3, 2))]))
+    def f(P):
+        P = np.asarray(P) / 100.0
+        r = np.hypot(P[:, None, 0] - C[None, :, 0], P[:, None, 1] - C[None, :, 1])
+        d = K(r) @ W[:n] + W[n] + P @ W[n + 1:]
+        return (P + d) * 100.0
+    return f
+warp = tps(WARP)
+
 # in Weltkoordinaten (Blender: x = Welt-x, -y = Welt-z, z = Höhe)
 me = o.data
-for v in me.vertices:
-    x, y, z = v.co
-    v.co = mathutils.Vector((CX + SX * x, -(CZ - SZ * y), FLOOR_Y + SY * (z - med)))
+co = np.array([v.co[:] for v in me.vertices])
+xz = np.stack([CX + SX * co[:, 0], CZ - SZ * co[:, 1]], 1)
+xz = warp(xz)
+for v, (wx, wz), h in zip(me.vertices, xz, co[:, 2]):
+    v.co = mathutils.Vector((wx, -wz, FLOOR_Y + SY * (h - med)))
 me.update()
 bpy.context.view_layer.update()
 dg = bpy.context.evaluated_depsgraph_get()
