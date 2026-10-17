@@ -1763,7 +1763,7 @@ type NexusAsset = { base: THREE.Mesh; crystal: THREE.Mesh; outlineGeo: THREE.Buf
 const NEXUS_STENCIL = 2;
 /** so weit steckt das Nexus-Modell im Boden (siehe buildNexusModel) */
 const NEXUS_SINK = 2.85;
-const NEXUS_YAW = (-30 * Math.PI) / 180;
+const NEXUS_YAW = (-20 * Math.PI) / 180;
 let nexusAsset: NexusAsset | null = null;
 
 /** Lädt das Nexus-Modell einmalig; bei einem Fehler bleibt der gebaute Ersatz-Nexus. */

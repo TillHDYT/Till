@@ -76,3 +76,49 @@ Ai = np.linalg.inv(A)
 for name, (x, y) in {"nexus": (195, 580), "nexusT1": (230, 505), "nexusT2": (282, 575), "inhTop": (172, 310), "inhMid": (446, 363), "inhBot": (475, 652), "turTop": (172, 215), "turMid": (502, 300), "turBot": (580, 655)}.items():
     p = Ai @ [x, y, 1]
     print(name, round(p[0]), round(p[1]))
+
+# Silberne Sternspitzen um den Nexus, die über den Ring des 3D-Modells (Radius 10.5) hinausragen, mit der
+# Umgebung (Gras) übermalen. Die Nexus-Türme bleiben ausgespart.
+from collections import deque
+
+res = np.asarray(Image.open(out).convert("RGB")).astype(float)
+def gpx(x, z):
+    return (x - X0) / W * N, (z - Z0) / W * N
+def lolg(X, Y):
+    return X / L * MAP, (1 - Y / L) * MAP
+ncx, ncz = gpx(*lolg(1543, 1661))
+ppu = N / W
+rr = np.hypot(i - ncx, j - ncz) / ppu
+mxc = res.max(2); mnc = res.min(2)
+satc = (mxc - mnc) / np.maximum(mxc, 1)
+grey = (satc < 0.24) & (mxc > 60)
+keep = np.zeros((N, N), bool)
+for X, Y in [(1724, 2242), (2125, 1760)]:
+    tx, tz = gpx(*lolg(X, Y))
+    keep |= np.hypot(i - tx, j - tz) / ppu < 3.4
+area = grey & (rr > 8.8) & (rr < 16) & ~keep
+star = np.zeros((N, N), bool)
+q = deque()
+for a in np.linspace(0, 2 * np.pi, 720, endpoint=False):
+    y_ = int(ncz + np.sin(a) * 9.2 * ppu); x_ = int(ncx + np.cos(a) * 9.2 * ppu)
+    if 0 <= y_ < N and 0 <= x_ < N and area[y_, x_]:
+        star[y_, x_] = True; q.append((y_, x_))
+while q:
+    y_, x_ = q.popleft()
+    for oy, ox in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        a_, b_ = y_ + oy, x_ + ox
+        if 0 <= a_ < N and 0 <= b_ < N and area[a_, b_] and not star[a_, b_]:
+            star[a_, b_] = True; q.append((a_, b_))
+# Ränder mitnehmen und kleine Lücken schließen
+star = box(star.astype(float), 4) > 0.15
+star &= (rr > 8.6) & ~keep
+# Füllung: echtes Gras aus der Nähe (südlich des Nexus), gespiegelt gekachelt, damit keine Nähte entstehen
+gx0, gz0 = int(ncx + 2.8 * ppu), int(ncz + 11.0 * ppu)
+patch = res[gz0:gz0 + int(4.6 * ppu), gx0:gx0 + int(6.0 * ppu)]
+ph, pw = patch.shape[:2]
+tile = np.concatenate([np.concatenate([patch, patch[:, ::-1]], 1), np.concatenate([patch[::-1], patch[::-1, ::-1]], 1)], 0)
+fillc = tile[j % (2 * ph), i % (2 * pw)]
+soft = np.clip(gblur(star.astype(float), 4) * 1.5, 0, 1)[..., None]
+res = res * (1 - soft) + fillc * soft
+Image.fromarray(np.clip(res, 0, 255).astype(np.uint8)).save(out, quality=88)
+print("Sternspitzen übermalt:", int(star.sum()), "Pixel")
