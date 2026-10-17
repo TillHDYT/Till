@@ -592,6 +592,9 @@ export class View {
 
   private arrowMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
 
+  /** Geschosse mit Daumenkino aus einem Vorlage-GIF (Elaras Grundangriff), je Geschoss-ID */
+  private flipShots = new Map<number, { h: ReturnType<FlipFx["elaraShot"]>; d0: number }>();
+
   private makeProj(p: Projectile): THREE.Object3D {
     const team = p.team === 0 || p.team === 1 ? p.team : 0;
     const G = this.projGeo;
@@ -697,9 +700,20 @@ export class View {
       live.add(p.id);
       let o = this.projs.get(p.id);
       if (!o) {
-        o = this.makeProj(p);
+        // Elaras Grundangriff: Komet Bild für Bild aus dem Vorlage-GIF statt der Kugel
+        const seen = p.team === this.playerTeam || p.owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
+        if (seen && p.basic && p.homing && p.owner instanceof Champion && p.owner.def.id === "elara") {
+          const tg = p.homing;
+          const from = new THREE.Vector3(p.x, g.groundAt(p.x, p.z), p.z);
+          this.flipShots.set(p.id, { h: this.flip.elaraShot(from, new THREE.Vector3(tg.x, g.groundAt(tg.x, tg.z), tg.z)), d0: Math.max(0.5, Math.hypot(tg.x - p.x, tg.z - p.z)) });
+          o = new THREE.Group();
+          o.userData.visual = "flip";
+          this.scene.add(o);
+        } else o = this.makeProj(p);
         this.projs.set(p.id, o);
       }
+      const fs = this.flipShots.get(p.id);
+      if (fs && p.homing) fs.h.progress(1 - Math.hypot(p.homing.x - p.x, p.homing.z - p.z) / fs.d0);
       const owner = p.owner;
       const visible = p.team === this.playerTeam || p.team === 2 || owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
       o.visible = visible;
@@ -743,6 +757,13 @@ export class View {
       if (live.has(id)) continue;
       this.scene.remove(o);
       this.projs.delete(id);
+      const fs = this.flipShots.get(id);
+      if (fs) {
+        fs.h.progress(1);
+        fs.h.release();
+        this.flipShots.delete(id);
+        continue;
+      }
       const chain = this.hookChains.get(id);
       if (chain) {
         this.scene.remove(chain);

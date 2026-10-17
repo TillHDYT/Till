@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import elaraAddUrl from "../assets/fx/elara_aa_add.jpg";
+import elaraMulUrl from "../assets/fx/elara_aa_mul.jpg";
 import qDiscAddUrl from "../assets/fx/q_disc_add.jpg";
 import qDiscMulUrl from "../assets/fx/q_disc_mul.jpg";
 import qFlightAddUrl from "../assets/fx/q_flight_add.jpg";
@@ -13,6 +15,10 @@ const FPS = 1000 / 30;
 const DISC_R_PX = 103;
 const FLIGHT = { frames: 31, cols: 4, rows: 8, u0: -379.674, u1: 60, v0: -90, v1: 90, L: 339.674 };
 const DISC = { frames: 39, cols: 7, rows: 6, half: 128.75 };
+// Elaras Grundangriff (assets-src/qeffect/cut_support.py): Ursprung am Abwurf, Kopf erreicht das Ende in Bild 15
+const ELARA = { frames: 30, cols: 3, rows: 10, u0: -50, u1: 375.76, v0: -55, v1: 55, L: 369.76, arrive: 15 };
+/** Elaras Komet: so lang (Welt-Einheiten) ist die Bahn aus dem GIF bei ungestreckter Darstellung. */
+const ELARA_LEN = 11;
 /** In der Scheibe läuft diese Bildfolge in Schleife, wenn sie länger liegen bleiben soll als im GIF. */
 const DISC_LOOP: [number, number] = [12, 33];
 
@@ -78,7 +84,7 @@ function quad(T: THREE.Vector3, U: THREE.Vector3, V: THREE.Vector3, u0: number, 
   return g;
 }
 
-type Flip = { meshes: THREE.Mesh[]; mats: THREE.ShaderMaterial[]; t: number; dur: number; frame: (t: number) => number; fade: (t: number) => number };
+type Flip = { meshes: THREE.Mesh[]; mats: THREE.ShaderMaterial[]; t: number; dur: number; frame: (t: number) => number; fade: (t: number) => number; held?: boolean };
 
 export class FlipFx {
   readonly group = new THREE.Group();
@@ -86,10 +92,10 @@ export class FlipFx {
 
   constructor() {
     // Bildtafeln gleich laden, damit der erste Wurf nicht stockt
-    for (const u of [qDiscAddUrl, qDiscMulUrl, qFlightAddUrl, qFlightMulUrl]) load(u);
+    for (const u of [qDiscAddUrl, qDiscMulUrl, qFlightAddUrl, qFlightMulUrl, elaraAddUrl, elaraMulUrl]) load(u);
   }
 
-  private add(geo: THREE.BufferGeometry, mul: THREE.ShaderMaterial, addM: THREE.ShaderMaterial, order: number, depthTest: boolean, dur: number, frame: (t: number) => number, fade: (t: number) => number) {
+  private add(geo: THREE.BufferGeometry, mul: THREE.ShaderMaterial, addM: THREE.ShaderMaterial, order: number, depthTest: boolean, dur: number, frame: (t: number) => number, fade: (t: number) => number): Flip {
     const meshes = [new THREE.Mesh(geo, mul), new THREE.Mesh(geo, addM)];
     meshes.forEach((m, i) => {
       m.renderOrder = order + i;
@@ -97,7 +103,44 @@ export class FlipFx {
       (m.material as THREE.ShaderMaterial).depthTest = depthTest;
       this.group.add(m);
     });
-    this.items.push({ meshes, mats: [mul, addM], t: 0, dur, frame, fade });
+    const it: Flip = { meshes, mats: [mul, addM], t: 0, dur, frame, fade };
+    this.items.push(it);
+    return it;
+  }
+
+  /**
+   * Elaras Grundangriff: Komet von from nach to, an ein Geschoss gebunden. Solange es fliegt, setzt der Aufrufer den
+   * Fortschritt (0..1); danach (release) laufen die liegenbleibenden Splitter in Originalgeschwindigkeit aus.
+   */
+  elaraShot(from: THREE.Vector3, to: THREE.Vector3) {
+    const U = new THREE.Vector3(to.x - from.x, 0, to.z - from.z);
+    const dist = U.length();
+    if (dist < 1e-3) U.set(0, 0, 1);
+    U.normalize();
+    const V = new THREE.Vector3(-U.z, 0, U.x);
+    const s = ELARA_LEN / ELARA.L;
+    const k = dist / ELARA_LEN;
+    const T = new THREE.Vector3(from.x, from.y + 1.1, from.z);
+    const geo = quad(T, U, V, ELARA.u0 * s * k, ELARA.u1 * s * k, ELARA.v0 * s, ELARA.v1 * s);
+    const st = { progress: 0, released: -1 };
+    const it = this.add(
+      geo,
+      flipMaterial(elaraMulUrl, ELARA.cols, ELARA.rows, "mul"),
+      flipMaterial(elaraAddUrl, ELARA.cols, ELARA.rows, "add"),
+      8,
+      false,
+      99,
+      (t) => (st.released < 0 ? Math.min(ELARA.arrive, Math.floor(st.progress * ELARA.arrive)) : Math.min(ELARA.frames - 1, ELARA.arrive + Math.floor((t - st.released) * FPS))),
+      (t) => (st.released < 0 ? 1 : Math.min(1, (ELARA.frames - ELARA.arrive) / FPS - (t - st.released)) * 4),
+    );
+    return {
+      progress: (p: number) => (st.progress = Math.max(st.progress, Math.min(1, p))),
+      release: () => {
+        if (st.released >= 0) return;
+        st.released = it.t;
+        it.dur = it.t + (ELARA.frames - ELARA.arrive) / FPS;
+      },
+    };
   }
 
   /**

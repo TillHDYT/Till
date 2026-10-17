@@ -90,6 +90,8 @@ export type Projectile = {
   noStructures?: boolean;
   onHit: (u: Unit, p: Projectile) => boolean | void;
   done: boolean;
+  /** Grundangriff eines Champions (für eigene Darstellungen, z. B. Elaras Komet) */
+  basic?: boolean;
 };
 
 export type Area = {
@@ -439,6 +441,7 @@ export class World {
       },
       done: false,
     });
+    return this.projectiles[this.projectiles.length - 1];
   }
 
   /** Gegner, auf den ein Geschoss der gerade ausgelösten Fähigkeit zufliegen soll (anvisiert und in Reichweite). */
@@ -726,7 +729,7 @@ export class World {
     };
     if (u.def.ranged) {
       // Geschoss startet auf Höhe von Bogen bzw. Händen
-      this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.projColor ?? (u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff), apply, u.height * 0.6);
+      this.homing(u, target, 30, u.def.projectile ?? "arrow", u.def.projColor ?? (u.def.id === "ignis" ? 0xff9a40 : 0xd8f0ff), apply, u.height * 0.6).basic = true;
     } else {
       apply(target);
       this.addFx({ type: "hit", x: target.x, z: target.z, color: crit ? 0xffe060 : 0xffffff });
