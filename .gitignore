@@ -3,3 +3,4 @@ dist
 *.log
 .DS_Store
 map.png
+__pycache__/
