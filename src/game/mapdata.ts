@@ -73,6 +73,8 @@ export const STRUCTURES: StructureSpec[] = [
 
 export const FOUNTAIN: [V2, V2] = [v(9, 191), mirror(v(9, 191))];
 export const FOUNTAIN_RADIUS = 8;
+/** So weit steht das Brunnenmodell über dem Gelände: obenauf auf dem Basis-Modell (dessen Boden ragt dort bis ~1.2). */
+export const FOUNTAIN_LIFT = 0.7;
 export const SPAWN: [V2, V2] = [v(13, 187), mirror(v(13, 187))];
 
 export type CampKind = "blue" | "red" | "gromp" | "wolves" | "raptors" | "krugs" | "dragon" | "baron" | "scuttle";

@@ -222,7 +222,7 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
     casts: [
       { url: varokQUrl, file: "src/assets/models/Varok_Q.glb (aus Krieger Fähigkeit Q Animation.fbx)", rate: 1.3 },
       { url: varokWUrl, file: "src/assets/models/Varok_W.glb (aus Krieger Fähigkeit W Animation (2).fbx)", rate: 1.2 },
-      { url: varokEUrl, file: "src/assets/models/Varok_E.glb (aus Krieger Fähigkeit E Great Sword Slide Attack.fbx)", rate: 2 },
+      { url: varokEUrl, file: "src/assets/models/Varok_E.glb (aus Krieger Fähigkeit E Great Sword Slide Attack.fbx)", rate: 0.85 },
       { url: varokRUrl, file: "src/assets/models/Varok_R.glb (aus Krieger Fähigkeit R Ultimate Animation.fbx)", rate: 1.3 },
     ],
   },

@@ -3,7 +3,7 @@ import { applyCameraCut } from "./camcut";
 import { FlipFx } from "./flipfx";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
-import { FOUNTAIN, MAP, RIVER_BRAZIERS, type V2 } from "./mapdata";
+import { FOUNTAIN, FOUNTAIN_LIFT, MAP, RIVER_BRAZIERS, type V2 } from "./mapdata";
 import {
   TEAM_COLOR,
   TEAM_GLOW,
@@ -42,7 +42,7 @@ function angleLerp(a: number, b: number, t: number) {
   return a + d * t;
 }
 
-type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh; sparkAcc: number };
+type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh; sparkAcc: number; dustAcc: number };
 type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number; rig?: ChampRig };
 type StructView = {
   model: StructModel;
@@ -119,7 +119,7 @@ export class View {
     // Brunnen
     FOUNTAIN.forEach((f, i) => {
       const fo = buildFountain(i as 0 | 1);
-      fo.position.set(f.x, 0.12, f.z);
+      fo.position.set(f.x, 0.12 + FOUNTAIN_LIFT, f.z);
       fo.rotation.y = Math.atan2(MAP / 2 - f.x, MAP / 2 - f.z);
       applyCameraCut(fo);
       scene.add(fo);
@@ -184,7 +184,7 @@ export class View {
       shield.position.y = 1.3;
       shield.visible = false;
       model.root.add(shield);
-      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, castN: 0, beam: null, shield, sparkAcc: 0 });
+      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, castN: 0, beam: null, shield, sparkAcc: 0, dustAcc: 0 });
     }
 
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -282,6 +282,22 @@ export class View {
         this.tmpA.z += (Math.random() - 0.5) * 0.3;
         const c = new THREE.Color().setHSL(0.995 + Math.random() * 0.02, 1, 0.42 + Math.random() * 0.18);
         this.particles.emit(this.tmpA.x, this.tmpA.y, this.tmpA.z, (Math.random() - 0.5) * 0.5, 0.35 + Math.random() * 0.6, (Math.random() - 0.5) * 0.5, c, 0.16 + Math.random() * 0.14, 0.45 + Math.random() * 0.45, 0);
+      }
+      // beim Rutschen (E): Staub an den Füßen und mehr Funken hinter der Klinge
+      const dash = v.unit.dash;
+      if (dash && !dash.leap) {
+        v.dustAcc += dt * 90;
+        const gy = this.world.grid.groundAt(v.unit.x, v.unit.z);
+        while (v.dustAcc >= 1) {
+          v.dustAcc -= 1;
+          const a = Math.random() * Math.PI * 2;
+          const dust = new THREE.Color().setHSL(0.0, 0.8, 0.16 + Math.random() * 0.1);
+          this.particles.emit(v.unit.x + Math.cos(a) * 0.5, gy + 0.15, v.unit.z + Math.sin(a) * 0.5, Math.cos(a) * 1.4, 0.6 + Math.random() * 0.8, Math.sin(a) * 1.4, dust, 0.45 + Math.random() * 0.35, 0.5 + Math.random() * 0.4, 1.5);
+          if (Math.random() < 0.5) {
+            this.tmpA.copy(fx.pts[(Math.random() * fx.pts.length) | 0]).applyMatrix4(fx.bone.matrixWorld);
+            this.particles.emit(this.tmpA.x, this.tmpA.y, this.tmpA.z, (Math.random() - 0.5) * 1.2, 0.2 + Math.random(), (Math.random() - 0.5) * 1.2, new THREE.Color(0xff2a1a), 0.22 + Math.random() * 0.15, 0.4 + Math.random() * 0.3, 0);
+          }
+        }
       }
     }
 

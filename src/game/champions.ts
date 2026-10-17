@@ -146,8 +146,9 @@ export const CHAMPIONS: ChampDef[] = [
         cast: (w, c, aim, rank) => {
           const d = dirFrom(c, aim);
           const dmg = r4([80, 120, 160, 200], rank) + c.stats.ad * 0.8;
-          // Rutsch-Angriff: Strecke wie in der Animation (3,5 m bei 1,75 m Körpergröße), langsamer passend zur Animation
-          w.dash(c, c.x + d.dx * 8, c.z + d.dz * 8, 14, {
+          // Rutsch-Angriff: Strecke wie in der Animation (3,5 m bei 1,75 m Körpergröße); gut 1 s lang, damit man das
+          // Rutschen sieht (Animation läuft passend langsamer, siehe models.ts)
+          w.dash(c, c.x + d.dx * 8, c.z + d.dz * 8, 7.5, {
             hitRadius: 1.8,
             onHit: (u) => {
               w.damage(c, u, dmg, "phys", { ability: true });

@@ -4,6 +4,7 @@ import {
   CAMP_PIT,
   FOUNTAIN,
   FOUNTAIN_RADIUS,
+  FOUNTAIN_LIFT,
   LANES,
   LANE_WIDTH,
   MAP,
@@ -452,7 +453,7 @@ export class NavGrid {
         const lane = cellSample(this.lane, n, px, pz);
         let open = cellSample(baseArr, n, px, pz) * 0.12 - cellSample(this.river, n, px, pz) * 1.15;
         open += (fbm(px * 0.12 + 50, pz * 0.12) - 0.5) * 0.25 * (1 - lane);
-        for (const f of FOUNTAIN) open = Math.max(open, 0.42 * smooth(7.9, 7.0, Math.hypot(px - f.x, pz - f.z)));
+        for (const f of FOUNTAIN) open = Math.max(open, (0.42 + FOUNTAIN_LIFT) * smooth(7.9, 7.0, Math.hypot(px - f.x, pz - f.z)));
         const d = Math.max(0, -(s - CLIFF_SHIFT));
         const k = smooth(0, 1.5, d);
         // Wandinseln flach: die Mauern (walls.ts) bilden den Rand, oben steht Wald
@@ -617,7 +618,8 @@ export class NavGrid {
 
   /** Bodenhöhe für Einheiten: im Fluss nicht unter die Wasseroberfläche sinken lassen. */
   groundAt(x: number, z: number) {
-    return Math.max(-0.55, Math.min(0.5, this.heightAt(x, z)));
+    // oben begrenzt: Wände sind höher, aber dort steht niemand (Brunnen und Basis-Modell liegen darunter)
+    return Math.max(-0.55, Math.min(1.6, this.heightAt(x, z)));
   }
 
   /** Sichtlinie / freie Strecke zwischen zwei Punkten (mit Mindestabstand zur Wand). */
