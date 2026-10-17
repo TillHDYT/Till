@@ -185,6 +185,122 @@ export const CHAMPIONS: ChampDef[] = [
     ],
   },
   {
+    id: "malgor",
+    name: "Malgor",
+    title: "der Blutschnitter",
+    role: "bot",
+    roleName: "Magier-Schütze",
+    ranged: true,
+    projectile: "bolt",
+    projColor: 0xff3030,
+    color: "#ff4a4a",
+    base: { hp: 565, mana: 360, ad: 59, armor: 25, mr: 30, as: 0.65, range: 12, ms: 6.8, hpReg: 1.4, manaReg: 1.8 },
+    growth: { hp: 88, mana: 45, ad: 3.1, armor: 3.6, mr: 1.2, as: 3.2 },
+    levelOrder: [3, 0, 1, 2],
+    build: ["boots", "stormblade", "infinity", "bloodthirster", "swiftboots", "spiritcloak"],
+    look: { body: 0x3a2a30, accent: 0xb02020, skin: 0xb8a0a8, hair: 0xd0d0d0, weapon: "staff", bulk: 0.95, cape: 0x401018 },
+    // Zauber wie Elara (Elara_Attack.glb): Hände zurück, dann nach vorn gestoßen, das Geschoss fliegt beim Stoß
+    swing: { clip: 1.0 / 1.2, hit: 0.47 / 1.2 },
+    abilities: [
+      {
+        name: "Blutkugel",
+        desc: "Schleudert eine Blutkugel an eine Stelle. Dort entsteht eine Blutlache, die Gegner verletzt und verlangsamt.",
+        icon: "🔴",
+        targeting: "point",
+        range: 12,
+        radius: 3.5,
+        cd: [7, 6.5, 6, 5.5],
+        mana: [50, 55, 60, 65],
+        ai: "poke",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 12);
+          const d = dirFrom(c, p);
+          const dmg = r4([70, 110, 150, 190], rank) + c.stats.ad * 0.8 + c.stats.ap * 0.4;
+          const speed = 20;
+          c.anim.atk = 1;
+          // die Kugel fliegt sichtbar zur Stelle (ohne selbst zu treffen), beim Aufschlag die Lache
+          w.skillshot(c, { dx: d.dx, dz: d.dz, speed, range: Math.max(0.5, d.len - 0.6), width: 0.01, visual: "orb", color: 0xff2a2a, champsOnly: true, onHit: () => false });
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: 3.5,
+            delay: Math.max(0.1, d.len / speed),
+            visual: "blood",
+            color: 0xff2030,
+            onTrigger: (a) => {
+              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff2030, owner: c, dur: 1.4 });
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.damage(c, u, dmg, "magic", { ability: true });
+                w.slow(u, 0.3, 1.5);
+              }
+            },
+          });
+        },
+      },
+      {
+        name: "Blutrausch",
+        desc: "Mehr Angriffstempo und Lebensraub für einige Sekunden.",
+        icon: "🩸",
+        targeting: "self",
+        range: 0,
+        cd: [13, 12, 11, 10],
+        mana: [35, 35, 35, 35],
+        ai: "fight",
+        cast: (w, c, _aim, rank) => {
+          w.addBuff(c, { id: "malgorW", until: w.t + 4, mods: { as: r4([35, 50, 65, 80], rank), ls: 15 } });
+          w.fx({ type: "aura", x: c.x, z: c.z, r: 1.6, color: 0xff3030, owner: c, dur: 4 });
+        },
+      },
+      {
+        name: "Schattenschritt",
+        desc: "Verschwindet und taucht ein Stück weiter wieder auf. Der nächste Angriff trifft härter.",
+        icon: "🌑",
+        targeting: "dir",
+        range: 6,
+        cd: [14, 13, 12, 11],
+        mana: [45, 45, 45, 45],
+        ai: "escape",
+        cast: (w, c, aim, rank) => {
+          const d = dirFrom(c, aim);
+          w.blink(c, c.x + d.dx * 6, c.z + d.dz * 6, 0xff3a3a);
+          c.empower = { until: w.t + 3.5, dmg: r4([40, 60, 80, 100], rank) + c.stats.ad * 0.5, type: "magic" };
+          c.atkCd = Math.min(c.atkCd, 0.1);
+        },
+      },
+      {
+        name: "Seelenernte",
+        desc: "Eine riesige Blutlache bricht aus dem Boden: hoher Schaden und starke Verlangsamung.",
+        icon: "💀",
+        targeting: "point",
+        range: 14,
+        radius: 5,
+        cd: [80, 70, 60],
+        mana: [100, 100, 100],
+        ai: "engage",
+        cast: (w, c, aim, rank) => {
+          const p = clampAim(c, aim, 14);
+          const dmg = r4([200, 320, 440], rank) + c.stats.ad * 1.0 + c.stats.ap * 0.6;
+          c.anim.atk = 1;
+          w.area(c, {
+            x: p.x,
+            z: p.z,
+            radius: 5,
+            delay: 0.9,
+            visual: "light",
+            color: 0xff2030,
+            onTrigger: (a) => {
+              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff1a20, owner: c, dur: 2.2 });
+              for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
+                w.damage(c, u, dmg, "magic", { ability: true });
+                w.slow(u, 0.5, 2);
+              }
+            },
+          });
+        },
+      },
+    ],
+  },
+  {
     id: "lyra",
     name: "Lyra",
     title: "die Frostschützin",

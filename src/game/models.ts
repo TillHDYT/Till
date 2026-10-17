@@ -19,6 +19,7 @@ import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
 import elaraDeathUrl from "../assets/models/Elara_Death.glb";
 import elaraIdleUrl from "../assets/models/Elara_Idle.glb";
 import lyraUrl from "../assets/models/Lyra.glb";
+import malgorUrl from "../assets/models/Malgor.glb";
 import varokUrl from "../assets/models/Varok.glb";
 import varokIdleUrl from "../assets/models/Varok_Idle.glb";
 import varokDeathUrl from "../assets/models/Varok_Death.glb";
@@ -159,7 +160,7 @@ export type ChampModel = {
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
 
 /** Champions mit eigenem 3D-Modell; alle anderen bleiben gebaute Figuren. */
-const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl, lyra: lyraUrl, elara: elaraUrl, varok: varokUrl };
+const CHAMP_MODELS: Record<string, string> = { kira: assassinUrl, thorne: tankUrl, lyra: lyraUrl, elara: elaraUrl, varok: varokUrl, malgor: malgorUrl };
 /** Zusätzliche Animationen (eigene GLBs mit gleichem Skelett, siehe assets-src/champion_anim.py). */
 /** hit: Treffermoment im Clip in Sekunden (champion_anim.py --treffer); bei zwei Schlägen wird der zweite so gedehnt,
  *  dass sein Treffer auf denselben Zeitpunkt fällt wie beim ersten (der Spiellogik). */
@@ -220,6 +221,15 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
     attack: { url: elaraAttackUrl, file: "src/assets/models/Elara_Attack.glb (aus Supporter Angriffs Animation.fbx, 1,15-2,15 s)" },
     death: { url: elaraDeathUrl, file: "src/assets/models/Elara_Death.glb (aus Supporter todes Animation.fbx)" },
   },
+  // Malgor: Mixamo-Figur „Ganfaul“ mit der Sichel fest in der rechten Faust (assets-src/mage_scythe.py); bisher nur die
+  // Stehanimation, Laufen, Zaubern und Sterben vorerst von Elara (gleiches Mixamo-Skelett), Faust aus der eigenen Haltung
+  malgor: {
+    idle: { url: malgorUrl, file: "src/assets/models/Malgor.glb (aus Standing Idle.fbx + Sichel)", clip: "Run" },
+    run: { url: elaraUrl, file: "src/assets/models/Elara.glb (Laufen von Elara)", clip: "Run", fremd: true },
+    attack: { url: elaraAttackUrl, file: "src/assets/models/Elara_Attack.glb (Zauber von Elara)", fremd: true },
+    death: { url: elaraDeathUrl, file: "src/assets/models/Elara_Death.glb (Sterben von Elara)", fremd: true },
+    fist: { url: malgorUrl, file: "src/assets/models/Malgor.glb (Faust um die Sichel)", clip: "Run" },
+  },
   thorne: {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
     attack: { url: tankAttackUrl, file: "src/assets/models/Tank_Attack.glb (aus Tank Schlag Animation.fbx)" },
@@ -259,7 +269,7 @@ const MONSTER_LIFT: Record<string, number> = { "monster:baron": 1.2 };
 // Warrok steht gebückt, daher größer als die Höhe in der Grundhaltung
 const MONSTER_HEIGHT: Record<string, number> = { "monster:blue": 4.6, "monster:red": 4.8, "monster:baron": 6.5 };
 /** Laufgeschwindigkeit, bei der die Laufanimation in Originalgeschwindigkeit läuft (Grundtempo des Champions). */
-const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, varok: 7, "monster:blue": 5, "monster:red": 4.5, "monster:baron": 4 };
+const RUN_REF_SPEED: Record<string, number> = { kira: 7.2, thorne: 6.9, lyra: 6.8, elara: 6.7, malgor: 6.7, varok: 7, "monster:blue": 5, "monster:red": 4.5, "monster:baron": 4 };
 
 type RigAsset = {
   scene: THREE.Object3D;

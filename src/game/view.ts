@@ -711,6 +711,8 @@ export class View {
         o.rotation.y = Math.atan2(p.dx, p.dz);
       }
       if (visible) {
+        // Blutkugel: Schweif aus Funken in der Farbe der Kugel
+        if (p.visual === "orb") for (let n = 0; n < 2; n++) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.2, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 1.2, new THREE.Color(p.color), 0.55, 0.45, 0);
         if (p.visual === "fireball" && Math.random() < 0.9) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.5, 0.8, (Math.random() - 0.5) * 1.5, new THREE.Color(0xff7a20), 0.7, 0.35, 0);
         if (p.visual === "turret") {
           const tc = new THREE.Color(TEAM_GLOW[p.team === 1 ? 1 : 0]);
@@ -852,6 +854,13 @@ export class View {
         case "burst":
           P.burst(f.x, y + 1.2, f.z, col, 24, 6, 0.7, 0.5);
           this.ground.ring(f.x, y, f.z, 0.3, f.r ?? 2, col, 0.3, 0.7);
+          break;
+        case "pool":
+          // Blutlache: rote Fläche mit Rand, die eine Weile liegen bleibt, dazu aufsteigende Funken
+          this.ground.ring(f.x, y, f.z, f.r ?? 3, f.r ?? 3, col, f.dur ?? 1.4, 0.5, true);
+          this.ground.ring(f.x, y, f.z, (f.r ?? 3) * 0.9, f.r ?? 3, col, f.dur ?? 1.4, 0.95);
+          P.burst(f.x, y + 0.6, f.z, col, 28, 4, 0.6, 0.7);
+          P.ring(f.x, y + 0.2, f.z, (f.r ?? 3) * 0.85, col, 24, 0.45, 0.9, 0.5);
           break;
         case "aura":
           if (f.owner) this.auras.push({ owner: f.owner, until: w.t + (f.dur ?? 3), color: new THREE.Color(col) });
