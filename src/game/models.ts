@@ -560,6 +560,11 @@ export async function loadChampionModels() {
           loadExtraClip(anims.fist, id, "Faust"),
           loadExtraClip(anims.idle2, id, "Zweite Steh"),
         ]);
+        // Spuren für Knochen, die dieses Modell nicht hat (fremde Animationen: Bänder, Finger), weglassen, sonst warnt
+        // three.js bei jedem Abspielen
+        const nodes = new Set<string>();
+        gltf.scene.traverse((o) => nodes.add(o.name));
+        for (const c of [run, idle, idle2, attack, attack2, attack3, death, fist, ...casts]) if (c) c.tracks = c.tracks.filter((t) => nodes.has(t.name.slice(0, t.name.lastIndexOf("."))));
         // Hüfthöhe fremder Animationen an dieses Modell anpassen (sonst sackt die Figur beim Wechsel zum Schlag ab)
         const ownHips = hipsY(clipFromZero(found));
         const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [attack3, anims.attack3], [death, anims.death], [idle2, anims.idle2]] as const;
@@ -589,11 +594,6 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        // Spuren für Knochen, die dieses Modell nicht hat (fremde Animationen: Bänder, Finger), weglassen, sonst warnt
-        // three.js bei jedem Abspielen
-        const nodes = new Set<string>();
-        gltf.scene.traverse((o) => nodes.add(o.name));
-        for (const c of [clip, idle, idle2, attack, attack2, attack3, death, ...casts]) if (c) c.tracks = c.tracks.filter((t) => nodes.has(t.name.slice(0, t.name.lastIndexOf("."))));
         rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, idle2, attack, attack2, attack3, order: anims.order ?? [], casts, castRates: [0, 1, 2, 3].map((i) => anims.casts?.[i]?.rate ?? 1), death, hitFrac, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
