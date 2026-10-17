@@ -719,7 +719,7 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
     uLane: { value: laneCoords(grid, high ? 1024 : 640) },
     uBaseFloor: { value: loadBaseFloor() },
     uGrassScale: { value: 1 / 7.5 },
-    uGrassTint: { value: new THREE.Vector3(1.95, 2.15, 2.4) },
+    uGrassTint: { value: new THREE.Vector3(2.85, 4.1, 2.4) },
   };
   fog.patch(
     groundMat,

@@ -2,7 +2,6 @@ import {
   BRUSHES,
   CAMPS,
   CAMP_PIT,
-  CAMP_PIT_DEPTH,
   FOUNTAIN,
   FOUNTAIN_RADIUS,
   LANES,
@@ -19,6 +18,9 @@ import {
 import { JUNGLE_MASK } from "./jungleMask";
 import { START_BASE_FOOTPRINT } from "./startbaseFootprint";
 import { BASE_MODEL_HEIGHT } from "./baseModelHeight";
+import { JG_CAMP_HEIGHT } from "./jgCampHeight";
+
+const JG_H = Uint8Array.from(atob(JG_CAMP_HEIGHT.data), (c) => c.charCodeAt(0));
 
 /** Oberfläche des Basis-Modells (assets-src/base-model): [Höhe, Abdeckung 0..1]; Rot ist die Punktspiegelung. */
 const BASE_H = Uint8Array.from(atob(BASE_MODEL_HEIGHT.data), (c) => c.charCodeAt(0));
@@ -261,6 +263,8 @@ export class NavGrid {
   readonly heights: Float32Array;
   /** So weit liegt der Geländeboden unter dem Basis-Modell tiefer (gleiche Auflösung wie heights), damit er nicht durchscheint. */
   readonly groundSink: Float32Array;
+  /** Camp-Modelle (Mulde mit Felsring): Lage, Drehung um y, Maßstab waagrecht und senkrecht. */
+  campProps: { x: number; z: number; rot: number; hs: number; vs: number }[] = [];
 
   private gScore: Float32Array;
   private came: Int32Array;
@@ -462,17 +466,56 @@ export class NavGrid {
       }
     }
     this.groundSink = sink;
-    // Kuhlen der Dschungel-Camps: flache, unregelmäßige Mulde, zum Rand weich ansteigend
+    // Camps: Mulde mit Felsring aus dem Dschungel-Modell (assets-src/jungle-model), offen zum Eingang des Camps.
+    // Boden der Mulde aus der Höhenkarte des Modells, darunter wird das Gelände abgesenkt.
+    const JG = JG_CAMP_HEIGHT;
+    const jgAt = (u: number, w: number) => {
+      const fi = ((u + JG.r) / (2 * JG.r)) * (JG.n - 1);
+      const fj = ((w + JG.r) / (2 * JG.r)) * (JG.n - 1);
+      if (fi < 0 || fj < 0 || fi >= JG.n - 1 || fj >= JG.n - 1) return -1;
+      const b = JG_H[Math.round(fj) * JG.n + Math.round(fi)];
+      return b ? (b - 1) / 400 - 0.2 : -1;
+    };
+    this.campProps = [];
     for (const c of CAMPS) {
       const r = CAMP_PIT[c.kind];
       if (!r) continue;
-      const ext = Math.ceil(r * 1.4 * R);
+      // Eingang: Mittel der Richtungen zu freien Zellen knapp außerhalb der Nische
+      let ex = 0;
+      let ez = 0;
+      for (let dz = -Math.ceil(r + 6); dz <= r + 6; dz++) {
+        for (let dx = -Math.ceil(r + 6); dx <= r + 6; dx++) {
+          const d = Math.hypot(dx, dz);
+          if (d < r + 1 || d > r + 6 || !this.isOpen(c.pos.x + dx, c.pos.z + dz)) continue;
+          ex += dx / d;
+          ez += dz / d;
+        }
+      }
+      const rot = Math.atan2(ex, ez);
+      const hs = (r / 0.3) * 0.95;
+      const vs = 12;
+      this.campProps.push({ x: c.pos.x, z: c.pos.z, rot, hs, vs });
+      const co = Math.cos(rot);
+      const si = Math.sin(rot);
+      const ext = Math.ceil(JG.r * hs * R);
       const cx = Math.round(c.pos.x * R);
       const cz = Math.round(c.pos.z * R);
       for (let z = Math.max(0, cz - ext); z <= Math.min(N, cz + ext); z++) {
         for (let x = Math.max(0, cx - ext); x <= Math.min(N, cx + ext); x++) {
-          const d = campDist(c.pos, x / R, z / R);
-          h[z * (N + 1) + x] -= CAMP_PIT_DEPTH * (1 - smooth(r * 0.55, r, d));
+          const wx = x / R - c.pos.x;
+          const wz = z / R - c.pos.z;
+          const u = (wx * co - wz * si) / hs;
+          const w = (wx * si + wz * co) / hs;
+          const mh = jgAt(u, w);
+          if (mh < -0.5) continue;
+          const i0 = z * (N + 1) + x;
+          sink[i0] = Math.max(sink[i0], 0.35 * (1 - smooth(0.44, 0.6, Math.hypot(u, w))));
+          // Boden der Mulde aus dem Modell; außerhalb taucht das Modell unter das Gelände
+          if (Math.hypot(u, w) > 0.4) continue;
+          const i = z * (N + 1) + x;
+          const d = Math.max(0, -(this.sdAt(x / R, z / R) - CLIFF_SHIFT));
+          const open = 1 - smooth(0, 1.5, d);
+          h[i] += (mh * vs - h[i]) * open * (1 - smooth(0.32, 0.4, Math.hypot(u, w)));
         }
       }
     }

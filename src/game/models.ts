@@ -14,6 +14,7 @@ import nexusUrl from "../assets/nexus.glb";
 import inhibitorUrl from "../assets/inhibitor.glb";
 import startBaseUrl from "../assets/startbase.glb";
 import baseGroundUrl from "../assets/basemodel.glb";
+import jgCampUrl from "../assets/jgcamp.glb";
 import assassinUrl from "../assets/models/Assassine.glb";
 import elaraUrl from "../assets/models/Elara.glb";
 import elaraAttackUrl from "../assets/models/Elara_Attack.glb";
@@ -2107,6 +2108,41 @@ export function buildBaseGround(team: 0 | 1, map: number): THREE.Object3D | null
     g.rotation.y = Math.PI;
     g.position.set(map, 0, map);
   }
+  return g;
+}
+
+// ---------------- Camp-Mulde mit Felsring aus dem Dschungel-Modell (assets-src/jungle-model -> jgcamp.glb) ----------------
+
+let jgCamp: THREE.Object3D | null = null;
+
+export async function loadJungleCamp(): Promise<boolean> {
+  if (jgCamp) return true;
+  try {
+    jgCamp = (await loadGlbOffline(jgCampUrl)).scene;
+  } catch (err) {
+    console.error("Camp-Modell konnte nicht geladen werden:", err);
+    return false;
+  }
+  jgCamp.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      const m = o.material as THREE.MeshStandardMaterial;
+      if (m.map) m.map.anisotropy = 4;
+      m.color.setRGB(0.72, 0.74, 0.78);
+      m.side = THREE.FrontSide;
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  return true;
+}
+
+/** Camp-Modell an einem Camp (Lage und Maßstab aus NavGrid.campProps). */
+export function buildJungleCamp(p: { x: number; z: number; rot: number; hs: number; vs: number }): THREE.Object3D | null {
+  if (!jgCamp) return null;
+  const g = jgCamp.clone(true);
+  g.position.set(p.x, 0, p.z);
+  g.rotation.y = p.rot;
+  g.scale.set(p.hs, p.vs, p.hs);
   return g;
 }
 

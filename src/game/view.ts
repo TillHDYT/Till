@@ -14,6 +14,7 @@ import {
   type ChampRig,
   addStartBaseFires,
   buildBaseGround,
+  buildJungleCamp,
   buildFountain,
   buildInhibitor,
   buildMonster,
@@ -108,6 +109,11 @@ export class View {
     for (const t of [0, 1] as const) {
       const bg = buildBaseGround(t, MAP);
       if (bg) scene.add(bg);
+    }
+    // Camps: Mulde mit Felsring aus dem Dschungel-Modell
+    for (const p of world.grid.campProps) {
+      const jc = buildJungleCamp(p);
+      if (jc) scene.add(jc);
     }
 
     // Brunnen
