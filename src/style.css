@@ -488,6 +488,10 @@ button {
 }
 
 .minimap {
+  /* klickbar: Linksklick schaut hin, Rechtsklick läuft hin */
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
   width: calc(132px * var(--s));
   height: calc(132px * var(--s));
   border: 2px solid var(--gold);

@@ -40,6 +40,8 @@ export class Game {
   private last = 0;
   private paused = false;
   private camTarget = new THREE.Vector3();
+  /** Kamera schaut woanders hin (Klick auf die Minikarte), null = folgt dem Champion */
+  private camLook: { x: number; z: number } | null = null;
   private ended = false;
   private endShown = false;
   private opts: GameOptions;
@@ -102,9 +104,16 @@ export class Game {
       onSound: (on) => (opts.sfx.enabled = on),
       onLevelUp: (slot) => this.world.levelUp(this.world.player, slot),
       onBuy: (id) => this.world.buy(this.world.player, id),
+      // Minikarte: am PC bleibt die Kamera nach dem Loslassen dort (Leertaste holt sie zurück), am Handy springt sie zurück
+      onMiniLook: (p, touch) => {
+        if (p) this.camLook = { x: p.x, z: p.z };
+        else if (touch) this.camLook = null;
+      },
+      onMiniMove: (x, z) => this.input.moveTo(x, z),
     });
     this.input = new Input(this.hud, this.world, this.view, this.camera, this.renderer.domElement);
     this.input.onShop = () => this.hud.toggleShop();
+    this.input.onCamCenter = () => (this.camLook = null);
     this.input.onPauseKey = () => {
       if (this.hud.shopVisible) this.hud.toggleShop(false);
       else this.setPaused(!this.paused);
@@ -230,6 +239,12 @@ export class Game {
     const p = w.player;
     let tx = p.x;
     let tz = p.z;
+    if (this.camLook && w.winner === null) {
+      tx = this.camLook.x;
+      tz = this.camLook.z;
+      // Blick über die Karte: sofort dort, nicht hingleiten
+      if (Math.hypot(tx - this.camTarget.x, tz - this.camTarget.z) > 25) this.camTarget.set(tx, 0, tz);
+    }
     if (w.winner !== null) {
       const nexus = w.structures.find((s) => s.kind === "nexus" && s.team !== w.winner)!;
       tx = nexus.x;

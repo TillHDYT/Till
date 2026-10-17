@@ -22,6 +22,10 @@ export type HudCallbacks = {
   onSound: (on: boolean) => void;
   onLevelUp: (slot: number) => void;
   onBuy: (id: string) => void;
+  /** Minikarte, Linksklick/Ziehen: Kamera dorthin (null = losgelassen); touch: Finger statt Maus */
+  onMiniLook: (p: { x: number; z: number } | null, touch: boolean) => void;
+  /** Minikarte, Rechtsklick: Champion läuft dorthin */
+  onMiniMove: (x: number, z: number) => void;
 };
 
 export class Hud {
@@ -140,6 +144,38 @@ export class Hud {
     this.mini = root.querySelector("canvas.minimap")!;
     this.mctx = this.mini.getContext("2d")!;
     this.miniBase = this.renderMiniBase(world.grid);
+    // Minikarte wie in LoL: Linksklick (oder Ziehen) schaut dorthin, Rechtsklick lässt den Champion dorthin laufen
+    const toWorld = (e: PointerEvent) => {
+      const r = this.mini.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(MAP, ((e.clientX - r.left) / r.width) * MAP)),
+        z: Math.max(0, Math.min(MAP, ((e.clientY - r.top) / r.height) * MAP)),
+      };
+    };
+    let look: number | null = null;
+    this.mini.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.mini.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const p = toWorld(e);
+      if (e.button === 2) {
+        cb.onMiniMove(p.x, p.z);
+        return;
+      }
+      look = e.pointerId;
+      this.mini.setPointerCapture(e.pointerId);
+      cb.onMiniLook(p, e.pointerType !== "mouse");
+    });
+    this.mini.addEventListener("pointermove", (e) => {
+      if (look === e.pointerId) cb.onMiniLook(toWorld(e), e.pointerType !== "mouse");
+    });
+    const up = (e: PointerEvent) => {
+      if (look !== e.pointerId) return;
+      look = null;
+      cb.onMiniLook(null, e.pointerType !== "mouse");
+    };
+    this.mini.addEventListener("pointerup", up);
+    this.mini.addEventListener("pointercancel", up);
 
     for (let i = 0; i < 6; i++) {
       const s = document.createElement("div");

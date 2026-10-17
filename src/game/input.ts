@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Hud } from "./hud";
-import type { V2 } from "./mapdata";
+import { SHOP, type V2 } from "./mapdata";
 import { WATER_Y } from "./terrain";
 import type { Champion, Unit } from "./units";
 import type { View } from "./view";
@@ -35,6 +35,8 @@ export class Input {
   private disposers: (() => void)[] = [];
   zoom = 1;
   onShop: () => void = () => {};
+  /** Leertaste: Kamera zurück auf den eigenen Champion */
+  onCamCenter: () => void = () => {};
   onPauseKey: () => void = () => {};
   onSfx: (name: string) => void = () => {};
   paused = () => false;
@@ -67,6 +69,12 @@ export class Input {
       const t = e.target as HTMLElement;
       if (t.closest("button") || t.closest(".modal") || t.closest(".tl")) return;
       if (e.pointerType === "mouse") return;
+      // Händlerboot antippen: Shop öffnen
+      if (this.shopAt(e.clientX, e.clientY)) {
+        this.onShop();
+        e.preventDefault();
+        return;
+      }
       // Gegner, Minion, Monster oder Turm antippen: anvisieren und angreifen
       const tapped = this.p.alive ? this.unitAt(e.clientX, e.clientY) : null;
       if (tapped) {
@@ -204,6 +212,11 @@ export class Input {
       // Rechts- und Linksklick laufen/greifen an; links, weil Browser-Mausgesten (Opera, Edge) beim Ziehen mit der
       // rechten Taste Tabs öffnen oder die Seite verlassen und eine Webseite das nicht abschalten kann
       if (e.button !== 2 && e.button !== 0) return;
+      // Klick auf das Händlerboot öffnet den Shop
+      if (this.shopAt(e.clientX, e.clientY)) {
+        this.onShop();
+        return;
+      }
       this.rightClick(e.clientX, e.clientY);
       const r = this.rmb;
       r.held = true;
@@ -263,6 +276,10 @@ export class Input {
       if (k === "f") this.world.spell2(this.p);
       if (k === "b") this.recall();
       if (k === "p") this.onShop();
+      if (k === " ") {
+        this.onCamCenter();
+        e.preventDefault();
+      }
       if (k === "s") {
         this.autoFight = false;
         this.rmb.held = false;
@@ -512,6 +529,32 @@ export class Input {
     p.lockTarget = null;
     const m = this.mouseWorld();
     const pt = w.freeGoal(p, m.x, m.z);
+    p.order = { type: "move", x: pt.x, z: pt.z };
+    this.view.ground.ring(pt.x, w.grid.groundAt(pt.x, pt.z), pt.z, 1.2, 0.2, 0x7dff6a, 0.35, 0.9);
+  }
+
+  /** Liegt der Bildschirmpunkt auf dem Händlerboot des eigenen Teams? */
+  private shopAt(sx: number, sy: number) {
+    const sp = SHOP[this.p.team as 0 | 1];
+    const v = new THREE.Vector3(sp.x, this.world.grid.groundAt(sp.x, sp.z) + 1.4, sp.z).project(this.camera);
+    if (v.z > 1) return false;
+    const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+    // Größe auf dem Bildschirm: Boot ist ~5 lang, Abstand Kamera–Boot bestimmt den Maßstab
+    const edge = new THREE.Vector3(sp.x + 2.4, this.world.grid.groundAt(sp.x, sp.z) + 1.4, sp.z).project(this.camera);
+    const r = Math.max(30, Math.hypot((edge.x - v.x) * 0.5 * window.innerWidth, (edge.y - v.y) * 0.5 * window.innerHeight));
+    return Math.hypot(sx - x, sy - y) < r;
+  }
+
+  /** Laufbefehl zu einem Punkt (Rechtsklick auf die Minikarte). */
+  moveTo(x: number, z: number) {
+    const p = this.p;
+    const w = this.world;
+    if (!p.alive || this.paused()) return;
+    this.autoFight = false;
+    w.cancelRecall(p);
+    p.lockTarget = null;
+    const pt = w.freeGoal(p, x, z);
     p.order = { type: "move", x: pt.x, z: pt.z };
     this.view.ground.ring(pt.x, w.grid.groundAt(pt.x, pt.z), pt.z, 1.2, 0.2, 0x7dff6a, 0.35, 0.9);
   }

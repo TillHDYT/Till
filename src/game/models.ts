@@ -185,6 +185,8 @@ type AnimSrc = { url: string; file: string; hit?: number; fremd?: boolean; spieg
 type ChampAnims = {
   run?: AnimSrc;
   idle?: AnimSrc;
+  /** zweite Stehanimation: nach 5 s Stillstehen weich überblendet (bis er wieder läuft oder angreift) */
+  idle2?: AnimSrc;
   attack?: AnimSrc;
   attack2?: AnimSrc;
   attack3?: AnimSrc;
@@ -235,7 +237,8 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
   // Malgor: Mixamo-Figur „Ganfaul“ mit der Sichel fest in der rechten Faust (assets-src/mage_scythe.py); bisher nur die
   // Stehanimation, Laufen, Zaubern und Sterben vorerst von Elara (gleiches Mixamo-Skelett), Faust aus der eigenen Haltung
   malgor: {
-    idle: { url: malgorUrl, file: "src/assets/models/Malgor.glb (aus Standing Idle.fbx + Sichel)", clip: "Run" },
+    // Stehen wie Elara (die eigene Stehanimation wirkte steif)
+    idle: { url: elaraIdleUrl, file: "src/assets/models/Elara_Idle.glb (Stehen von Elara)", fremd: true },
     run: { url: elaraUrl, file: "src/assets/models/Elara.glb (Laufen von Elara)", clip: "Run", fremd: true },
     attack: { url: elaraAttackUrl, file: "src/assets/models/Elara_Attack.glb (Zauber von Elara)", fremd: true },
     death: { url: elaraDeathUrl, file: "src/assets/models/Elara_Death.glb (Sterben von Elara)", fremd: true },
@@ -243,6 +246,8 @@ const CHAMP_ANIMS: Record<string, ChampAnims> = {
   },
   thorne: {
     idle: { url: tankIdleUrl, file: "src/assets/models/Tank_Idle.glb (aus Tank Stehend Animation.fbx)" },
+    // nach 5 s Stillstehen in Elaras Stehhaltung wechseln
+    idle2: { url: elaraIdleUrl, file: "src/assets/models/Elara_Idle.glb (Stehen von Elara)", fremd: true },
     attack: { url: tankAttackUrl, file: "src/assets/models/Tank_Attack.glb (aus Tank Schlag Animation.fbx)" },
     death: { url: tankDeathUrl, file: "src/assets/models/Tank_Death.glb (aus Tank Todes Animation.fbx)" },
   },
@@ -287,6 +292,7 @@ type RigAsset = {
   runRef: number;
   clip: THREE.AnimationClip;
   idle: THREE.AnimationClip | null;
+  idle2: THREE.AnimationClip | null;
   attack: THREE.AnimationClip | null;
   /** weitere Schlaganimationen (abwechselnd mit attack) */
   attack2: THREE.AnimationClip | null;
@@ -408,7 +414,9 @@ async function loadExtraClip(src: AnimSrc | undefined, id: string, what: string)
     const gltf = await clipFiles.get(src.url)!;
     const clip = src.clip ? gltf.animations.find((a) => a.name === src.clip) : gltf.animations[0];
     if (!clip) throw new Error(`keine Animation ${src.clip ?? ""} in der Datei`);
-    return src.spiegeln ? mirrorClip(clipFromZero(clip)) : clipFromZero(clip);
+    // fremde Animationen werden an dieses Modell angepasst (Hüfthöhe): eigene Kopie, sonst ändert sich das Original mit
+    const own = src.fremd ? clipFromZero(clip).clone() : clipFromZero(clip);
+    return src.spiegeln ? mirrorClip(own) : own;
   } catch (err) {
     console.error(`${what}-Animation für Champion ${id} konnte nicht geladen werden: ${src.file}`, err);
     return null;
@@ -430,6 +438,11 @@ export type ChampRig = {
   idle: THREE.AnimationAction | null;
   idleT: number;
   runW: number;
+  /** zweite Stehanimation nach längerem Stillstehen: Aktion, Zeit, Gewicht und Dauer des Stillstands */
+  idle2: THREE.AnimationAction | null;
+  idle2T: number;
+  idle2W: number;
+  stillT: number;
   /** Schlaganimation: Gewicht (blendet ein und aus) und Zeit im Clip */
   attack: THREE.AnimationAction | null;
   atkW: number;
@@ -525,7 +538,7 @@ export async function loadChampionModels() {
         if (!found) throw new Error("keine Animation im Modell");
         const anims = CHAMP_ANIMS[id] ?? {};
         const casts = await Promise.all([0, 1, 2, 3].map((i) => loadExtraClip(anims.casts?.[i] ?? undefined, id, "QWER"[i])));
-        const [run, idle, attack, attack2, attack3, death, fist] = await Promise.all([
+        const [run, idle, attack, attack2, attack3, death, fist, idle2] = await Promise.all([
           loadExtraClip(anims.run, id, "Lauf"),
           loadExtraClip(anims.idle, id, "Steh"),
           loadExtraClip(anims.attack, id, "Schlag"),
@@ -533,13 +546,14 @@ export async function loadChampionModels() {
           loadExtraClip(anims.attack3, id, "Dritte Schlag"),
           loadExtraClip(anims.death, id, "Sterbe"),
           loadExtraClip(anims.fist, id, "Faust"),
+          loadExtraClip(anims.idle2, id, "Zweite Steh"),
         ]);
         // Hüfthöhe fremder Animationen an dieses Modell anpassen (sonst sackt die Figur beim Wechsel zum Schlag ab)
         const ownHips = hipsY(clipFromZero(found));
-        const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [attack3, anims.attack3], [death, anims.death]] as const;
+        const extras = [[run, anims.run], [idle, anims.idle], [attack, anims.attack], [attack2, anims.attack2], [attack3, anims.attack3], [death, anims.death], [idle2, anims.idle2]] as const;
         for (const [c, src] of extras) if (c && src?.fremd && ownHips) scaleHips(c, ownHips);
         const clip = run ?? clipFromZero(found);
-        if (fist) for (const c of [clip, idle, attack, attack2, attack3]) if (c) holdFingers(c, fist);
+        if (fist) for (const c of [clip, idle, idle2, attack, attack2, attack3]) if (c) holdFingers(c, fist);
         const atks = [attack, attack2, attack3].filter((c): c is THREE.AnimationClip => !!c);
         const hits = [anims.attack?.hit, anims.attack2?.hit, anims.attack3?.hit].filter((_h, i) => [attack, attack2, attack3][i]);
         const hitFrac = hits.every((h) => h) && atks.length > 1 ? hits.map((h, i) => h! / atks[i].duration) : [];
@@ -563,7 +577,7 @@ export async function loadChampionModels() {
         });
         if (noUv) console.warn(`Modell für Champion ${id} hat keine UV-Koordinaten; die Texturen können nicht aufgelegt werden, nutze Teamfarben.`);
         // Ruhehaltungen an einer Kopie suchen, damit das geladene Modell unverändert bleibt
-        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, attack, attack2, attack3, order: anims.order ?? [], casts, castRates: [0, 1, 2, 3].map((i) => anims.casts?.[i]?.rate ?? 1), death, hitFrac, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
+        rigAssets.set(id, { scene: gltf.scene, runRef: RUN_REF_SPEED[id] ?? 7, clip, idle, idle2, attack, attack2, attack3, order: anims.order ?? [], casts, castRates: [0, 1, 2, 3].map((i) => anims.casts?.[i]?.rate ?? 1), death, hitFrac, height: box.max.y - box.min.y, minY: box.min.y, rest: restTimes(cloneSkinned(gltf.scene), clip), noUv });
       } catch (err) {
         console.error(`Modell für Champion ${id} konnte nicht geladen werden, nutze gebaute Figur:`, err);
       }
@@ -649,6 +663,15 @@ export function updateRig(rig: ChampRig, moving: boolean, speed: number, dt: num
     rig.atkW += ((swing >= 0 ? 1 : 0) - rig.atkW) * Math.min(1, dt * 14);
     if (rig.atkW < 0.001) rig.atkW = 0;
   }
+  // nach 5 s Stillstehen (kein Laufen, Schlag oder Zauber) in die zweite Stehanimation überblenden
+  if (rig.idle2) {
+    rig.stillT = moving || swing >= 0 || rig.cast ? 0 : rig.stillT + dt;
+    rig.idle2W += ((rig.stillT > 5 ? 1 : 0) - rig.idle2W) * Math.min(1, dt * 2.5);
+    if (rig.idle2W < 0.002) {
+      rig.idle2W = 0;
+      rig.idle2T = 0;
+    } else rig.idle2T = (rig.idle2T + dt) % rig.idle2.getClip().duration;
+  }
   if (rig.cast) {
     // Fähigkeiten-Animation: läuft einmal durch, liegt über allem anderen; ein Schlag oder Weglaufen beendet sie
     const c = rig.cast;
@@ -675,8 +698,13 @@ function setRigWeights(rig: ChampRig, run: number, idle: number, attack: number,
   rig.action.time = rig.t;
   rig.action.setEffectiveWeight(run);
   if (rig.idle) {
+    const w2 = rig.idle2 ? rig.idle2W : 0;
     rig.idle.time = rig.idleT;
-    rig.idle.setEffectiveWeight(idle);
+    rig.idle.setEffectiveWeight(idle * (1 - w2));
+    if (rig.idle2) {
+      rig.idle2.time = rig.idle2T;
+      rig.idle2.setEffectiveWeight(idle * w2);
+    }
   }
   for (const a of rig.attacks) {
     if (a === rig.attack) {
@@ -857,13 +885,14 @@ function buildRig(asset: RigAsset, height: number) {
   };
   const action = play(asset.clip, 1)!;
   const idle = play(asset.idle, 0);
+  const idle2 = play(asset.idle2, 0);
   const attack = play(asset.attack, 0);
   const attacks = [attack, play(asset.attack2, 0), play(asset.attack3, 0)].filter((a): a is THREE.AnimationAction => !!a);
   const casts = asset.casts.map((c) => play(c, 0));
   const death = play(asset.death, 0);
   const rig: ChampRig = {
     mixer, action, runRef: asset.runRef, t: asset.rest[0], speed: 0, rest: asset.rest, dur: asset.clip.duration, model,
-    idle, idleT: 0, runW: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, hitFrac: asset.hitFrac, lastSwing: -1, death, deathT: 0,
+    idle, idleT: 0, runW: 0, idle2, idle2T: 0, idle2W: 0, stillT: 0, attack, atkW: 0, atkTime: 0, attacks, prev: null, selfT: -1, selfDur: 1, lastAtk: 0, atkRepeat: 0, hitFrac: asset.hitFrac, lastSwing: -1, death, deathT: 0,
     order: asset.order, orderI: 0, casts, castRates: asset.castRates, cast: null,
   };
   updateRig(rig, false, 0, 0);
@@ -2262,6 +2291,87 @@ export async function loadTrees(quality: "high" | "low" = "low"): Promise<boolea
   TREE_ASSETS.list = set.trees;
   WALL_ASSET.asset = set.wall;
   return true;
+}
+
+// ---------------- Händlerboot (Shop neben dem Brunnen) ----------------
+
+/**
+ * Kleines Händlerboot als Shop: Holzrumpf, Marktstand mit rot-goldenem Sonnendach, Laterne am Mast und eine
+ * schwebende Goldmünze darüber (dreht sich, siehe view.ts). Länge entlang x, Bug bei +x.
+ */
+export function buildShopBoat(): { root: THREE.Group; coin: THREE.Object3D; lantern: THREE.Object3D } {
+  const root = new THREE.Group();
+  const wood = 0x6b4226;
+  const woodD = 0x3e2414;
+  const plank = 0x8a5a32;
+  const parts: THREE.BufferGeometry[] = [];
+  // Rumpf: untere Halbkugel als Schale, zum Bug hin spitz und hochgezogen
+  const hull = new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+  const hp = hull.attributes.position;
+  for (let i = 0; i < hp.count; i++) {
+    const x = hp.getX(i);
+    const y = hp.getY(i);
+    const taper = x > 0 ? 1 - x * x * 0.7 : 1 - x * x * 0.25;
+    hp.setZ(i, hp.getZ(i) * taper);
+    // Bug und Heck etwas höher (geschwungene Linie)
+    hp.setY(i, y + (y > -0.05 ? x * x * 0.25 : 0));
+  }
+  hull.computeVertexNormals();
+  // von oben sieht man in die Schale hinein: beidseitig zeichnen
+  const hullShell = new THREE.Mesh(colored(hull, wood, mat4(0, 1.05, 0, 2.5, 1.05, 1.15)), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  hullShell.castShadow = true;
+  hullShell.receiveShadow = true;
+  root.add(hullShell);
+  // Reling oben
+  parts.push(colored(new THREE.TorusGeometry(1, 0.07, 6, 32), woodD, mat4(0, 1.07, 0, 2.5, 0.95, 1, Math.PI / 2, 0, 0)));
+  // Bugspitze
+  parts.push(colored(new THREE.ConeGeometry(0.12, 0.9, 6), woodD, mat4(2.45, 1.45, 0, 1, 1, 1, 0, 0, -0.9)));
+  // Deck innen, etwas tiefer
+  parts.push(colored(new THREE.BoxGeometry(3.4, 0.06, 1.2), plank, mat4(-0.15, 0.78, 0)));
+  // Marktstand: Theke, Pfosten, Kisten und Säcke
+  parts.push(colored(new THREE.BoxGeometry(1.4, 0.5, 0.95), woodD, mat4(-0.65, 1.05, 0)));
+  parts.push(colored(new THREE.BoxGeometry(1.5, 0.07, 1.05), plank, mat4(-0.65, 1.33, 0)));
+  for (const [x, z] of [[-1.35, -0.45], [-1.35, 0.45], [0.05, -0.45], [0.05, 0.45]]) parts.push(colored(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6), woodD, mat4(x, 1.6, z)));
+  parts.push(colored(new THREE.BoxGeometry(0.45, 0.4, 0.45), plank, mat4(0.75, 1.0, 0.25, 1, 1, 1, 0, 0.3, 0)));
+  parts.push(colored(new THREE.BoxGeometry(0.33, 0.28, 0.33), wood, mat4(0.8, 1.33, 0.2, 1, 1, 1, 0, -0.2, 0)));
+  parts.push(colored(new THREE.SphereGeometry(0.22, 8, 6), 0xb89a6a, mat4(0.65, 0.98, -0.3, 1, 0.8, 1)));
+  // Mast mit Querstange
+  parts.push(colored(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 8), woodD, mat4(1.2, 2.05, -0.2)));
+  parts.push(colored(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 6), woodD, mat4(1.2, 3.15, 0.1, 1, 1, 1, Math.PI / 2, 0, 0)));
+  const hullMesh = mesh(parts);
+  hullMesh.receiveShadow = true;
+  root.add(hullMesh);
+  // Sonnendach: rot-gold gestreift
+  const awning: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.BoxGeometry(0.3, 0.05, 1.45);
+    awning.push(colored(g, i % 2 ? 0xd9a032 : 0x9e1c24, mat4(-1.35 + 0.15 + i * 0.28, 2.38 - Math.abs(i - 2.5) * 0.06, 0, 1, 1, 1, 0.18, 0, 0)));
+  }
+  root.add(mesh(awning));
+  // Laterne am Mast (leuchtet)
+  const lantern = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), new THREE.MeshBasicMaterial({ color: 0xffd27a }));
+  lantern.position.set(1.2, 3.0, 0.5);
+  root.add(lantern);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffb040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(1.6, 1.6, 1);
+  lantern.add(glow);
+  // Goldmünze über dem Stand
+  const coin = new THREE.Group();
+  const coinMat = new THREE.MeshLambertMaterial({ color: 0xffc83a, emissive: 0x6a4a08 });
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.1, 24), coinMat);
+  disc.rotation.x = Math.PI / 2;
+  coin.add(disc);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 24), new THREE.MeshLambertMaterial({ color: 0xc88a1a, emissive: 0x4a3006 }));
+  coin.add(rim);
+  const cglow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffc040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.7 }));
+  cglow.scale.set(1.8, 1.8, 1);
+  coin.add(cglow);
+  coin.position.set(-0.65, 3.25, 0);
+  root.add(coin);
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return { root, coin, lantern };
 }
 
 // ---------------- Startbasis aus dem 3D-Modell (assets-src/startbase.md -> startbase.glb) ----------------

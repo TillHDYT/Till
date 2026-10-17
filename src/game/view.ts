@@ -3,7 +3,7 @@ import { applyCameraCut } from "./camcut";
 import { FlipFx } from "./flipfx";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
-import { FOUNTAIN, FOUNTAIN_LIFT, MAP, RIVER_BRAZIERS, type V2 } from "./mapdata";
+import { FOUNTAIN, FOUNTAIN_LIFT, MAP, RIVER_BRAZIERS, SHOP, type V2 } from "./mapdata";
 import {
   TEAM_COLOR,
   TEAM_GLOW,
@@ -14,6 +14,7 @@ import {
   type ChampRig,
   addStartBaseFires,
   buildBaseGround,
+  buildShopBoat,
   buildJungleCamp,
   buildFountain,
   buildInhibitor,
@@ -87,6 +88,8 @@ export class View {
   private braziers: { x: number; z: number; y: number; glow: THREE.Sprite; flame: THREE.Object3D; phase: number; size?: number }[] = [];
   private beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
   private tmpA = new THREE.Vector3();
+  /** Händlerboote (Shop) beider Teams: Münze dreht sich und schwebt */
+  private shops: { coin: THREE.Object3D; y: number }[] = [];
   private tmpB = new THREE.Vector3();
   private fireCol = [new THREE.Color(0xffb040), new THREE.Color(0xff6a10), new THREE.Color(0xffe080)];
 
@@ -115,6 +118,17 @@ export class View {
       const jc = buildJungleCamp(p, (x, z) => world.grid.isOpen(x, z));
       if (jc) scene.add(jc);
     }
+
+    // Händlerboot mit dem Shop neben dem Brunnen
+    SHOP.forEach((p, t) => {
+      const boat = buildShopBoat();
+      boat.root.position.set(p.x, world.grid.groundAt(p.x, p.z) - 0.15, p.z);
+      // Bug zeigt zur Mitte der Basis, Rot gespiegelt
+      boat.root.rotation.y = t === 0 ? 0.35 : Math.PI + 0.35;
+      applyCameraCut(boat.root);
+      scene.add(boat.root);
+      this.shops.push({ coin: boat.coin, y: boat.coin.position.y });
+    });
 
     // Brunnen
     FOUNTAIN.forEach((f, i) => {
@@ -266,6 +280,12 @@ export class View {
       if (lc.n === v.castN) continue;
       v.castN = lc.n;
       if (v.model.rig) playCast(v.model.rig, lc.slot);
+    }
+
+    // Shop-Münzen drehen sich und schweben
+    for (const sh of this.shops) {
+      sh.coin.rotation.y += dt * 1.6;
+      sh.coin.position.y = sh.y + Math.sin(w.t * 2.2) * 0.12;
     }
 
     // Funken an der Klinge (Varok): kleine rote Partikel, auch beim Laufen

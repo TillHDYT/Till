@@ -73,6 +73,8 @@ export const STRUCTURES: StructureSpec[] = [
 
 export const FOUNTAIN: [V2, V2] = [v(9, 191), mirror(v(9, 191))];
 export const FOUNTAIN_RADIUS = 8;
+/** Händlerboot mit dem Shop neben dem Brunnen (anklickbar). */
+export const SHOP: [V2, V2] = [{ x: 27, z: 290.5 }, mirror({ x: 27, z: 290.5 })];
 /** So weit steht das Brunnenmodell über dem Gelände: obenauf auf dem Basis-Modell (dessen Boden ragt dort bis ~1.2). */
 export const FOUNTAIN_LIFT = 0.7;
 export const SPAWN: [V2, V2] = [v(13, 187), mirror(v(13, 187))];
