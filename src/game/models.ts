@@ -164,6 +164,8 @@ export type ChampModel = {
   glow: THREE.Object3D | null;
   /** nur bei Champions aus einem 3D-Modell mit Skelett */
   rig?: ChampRig;
+  /** Punkte auf der Klinge (im Raum des Handknochens), dort sprühen Funken (Varok) */
+  swordFx?: { bone: THREE.Object3D; pts: THREE.Vector3[] };
 };
 
 // ---------------- Champions aus 3D-Modellen (Mixamo, mit Skelett und Laufanimation) ----------------
@@ -792,7 +794,48 @@ function buildRigChampion(asset: RigAsset, look: Look, ringColor: number): Champ
   body.add(...limbs);
   const ring = champRing(ringColor);
   root.add(ring);
-  return { root, body, armL: limbs[0], armR: limbs[1], legL: limbs[2], legR: limbs[3], ring, glow: null, rig };
+  const swordFx = id && SWORD_FX[id] ? bladePoints(model, SWORD_FX[id]) : undefined;
+  return { root, body, armL: limbs[0], armR: limbs[1], legL: limbs[2], legR: limbs[3], ring, glow: null, rig, swordFx };
+}
+
+/** Champions mit Funken an der Klinge: Knochen der Schwerthand. */
+const SWORD_FX: Record<string, string> = { varok: "mixamorigRightHand" };
+
+/**
+ * Klinge finden: Hautpunkte, die ganz an der Schwerthand hängen und weit vom Handgelenk entfernt sind (die Hand selbst
+ * liegt nah am Knochen). Ergebnis im Raum des Knochens, damit die Punkte jeder Bewegung folgen.
+ */
+function bladePoints(model: THREE.Object3D, boneName: string): { bone: THREE.Object3D; pts: THREE.Vector3[] } | undefined {
+  let bone: THREE.Object3D | undefined;
+  const cand: THREE.Vector3[] = [];
+  // alle Teile mit Skelett (die Klinge ist oft ein eigenes Teil neben dem Körper)
+  model.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh) return;
+    const bi = sm.skeleton.bones.findIndex((b) => b.name === boneName);
+    if (bi < 0) return;
+    bone = sm.skeleton.bones[bi];
+    const pos = sm.geometry.attributes.position;
+    const si = sm.geometry.attributes.skinIndex;
+    const sw = sm.geometry.attributes.skinWeight;
+    const toBone = sm.skeleton.boneInverses[bi].clone().multiply(sm.bindMatrix);
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === bi) w += sw.getComponent(i, k);
+      if (w < 0.9) continue;
+      cand.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBone));
+    }
+  });
+  if (!bone || cand.length < 8) return undefined;
+  const far = Math.max(...cand.map((p) => p.length()));
+  // Klinge als Strecke vom Heft (nahe Klingenpunkte) zur Spitze (fernste Punkte), Funken gleichmäßig darauf
+  const blade = cand.filter((p) => p.length() > far * 0.12);
+  const mean = (l: THREE.Vector3[]) => l.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / Math.max(1, l.length));
+  const base = mean(blade.filter((p) => p.length() < far * 0.35));
+  const tip = mean(blade.filter((p) => p.length() > far * 0.9));
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i < 120; i++) pts.push(base.clone().lerp(tip, 0.05 + (i / 119) * 0.95));
+  return { bone, pts };
 }
 
 /** Modell mit Skelett auf die gewünschte Höhe bringen und alle Animationen anlegen. */

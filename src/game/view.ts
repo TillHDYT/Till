@@ -42,7 +42,7 @@ function angleLerp(a: number, b: number, t: number) {
   return a + d * t;
 }
 
-type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh };
+type ChampView = { model: ChampModel; unit: Champion; facing: number; deathT: number; castN: number; beam: THREE.Mesh | null; shield: THREE.Mesh; sparkAcc: number };
 type MonView = { root: THREE.Group; glow: THREE.Object3D | null; unit: Monster; facing: number; rig?: ChampRig };
 type StructView = {
   model: StructModel;
@@ -184,7 +184,7 @@ export class View {
       shield.position.y = 1.3;
       shield.visible = false;
       model.root.add(shield);
-      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, castN: 0, beam: null, shield });
+      this.champs.set(c.id, { model, unit: c, facing: c.facing, deathT: 0, castN: 0, beam: null, shield, sparkAcc: 0 });
     }
 
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -266,6 +266,23 @@ export class View {
       if (lc.n === v.castN) continue;
       v.castN = lc.n;
       if (v.model.rig) playCast(v.model.rig, lc.slot);
+    }
+
+    // Funken an der Klinge (Varok): kleine rote Partikel, auch beim Laufen
+    for (const v of this.champs.values()) {
+      const fx = v.model.swordFx;
+      if (!fx || !v.unit.alive || !v.model.root.visible) continue;
+      v.sparkAcc += dt * 70;
+      while (v.sparkAcc >= 1) {
+        v.sparkAcc -= 1;
+        this.tmpA.copy(fx.pts[(Math.random() * fx.pts.length) | 0]).applyMatrix4(fx.bone.matrixWorld);
+        // etwas neben der Klinge, sonst verdeckt sie die Funken
+        this.tmpA.x += (Math.random() - 0.5) * 0.3;
+        this.tmpA.y += (Math.random() - 0.5) * 0.3;
+        this.tmpA.z += (Math.random() - 0.5) * 0.3;
+        const c = new THREE.Color().setHSL(0.995 + Math.random() * 0.02, 1, 0.42 + Math.random() * 0.18);
+        this.particles.emit(this.tmpA.x, this.tmpA.y, this.tmpA.z, (Math.random() - 0.5) * 0.5, 0.35 + Math.random() * 0.6, (Math.random() - 0.5) * 0.5, c, 0.16 + Math.random() * 0.14, 0.45 + Math.random() * 0.45, 0);
+      }
     }
 
     // Champions
