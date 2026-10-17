@@ -18,13 +18,14 @@ export const mirror = (p: V2): V2 => ({ x: MAP - p.x, z: MAP - p.z });
 
 // Lane-Mittellinien von der blauen Nexus bis zur roten Nexus.
 export const LANES: Record<LaneId, V2[]> = {
-  // Ecke wie auf der Kluft weiter außen (sonst bleibt zwischen Lane und Fluss eine große leere Fläche)
-  top: [v(24, 176), v(16, 160), v(14, 146), v(14, 33), v(15.5, 20), v(20, 15.5), v(33, 14), v(146, 14), v(160, 16), v(176, 24)],
+  // wie auf der Kluft (Vorlage assets-src/jungle/kluft.webp): Lanes laufen durch die Türme, die Dschungelwände
+  // reichen bis an den Lane-Rand; die Ecken sind schräg abgeschnitten. Bot ist Top an der Nebendiagonale gespiegelt.
+  top: [v(24, 176), v(18, 164), v(16.67, 152), v(16.67, 53.33), v(18, 37.33), v(21.33, 28), v(28, 21.33), v(37.33, 18), v(53.33, 16.67), v(152, 16.67), v(164, 18), v(176, 24)],
   mid: [v(24, 176), v(36, 164), v(46, 154), v(154, 46), v(164, 36), v(176, 24)],
-  bot: [v(24, 176), v(40, 184), v(54, 186), v(167, 186), v(180, 184.5), v(184.5, 180), v(186, 167), v(186, 54), v(184, 40), v(176, 24)],
+  bot: [v(24, 176), v(36, 182), v(48, 183.33), v(146.67, 183.33), v(162.67, 182), v(172, 178.67), v(178.67, 172), v(182, 162.67), v(183.33, 146.67), v(183.33, 48), v(182, 36), v(176, 24)],
 };
 
-export const LANE_WIDTH: Record<LaneId, number> = { top: 13, mid: 12, bot: 13 };
+export const LANE_WIDTH: Record<LaneId, number> = { top: 20, mid: 18, bot: 20 };
 
 /** Wegpunkte einer Lane aus Sicht eines Teams (Start an der eigenen Nexus). */
 export function lanePath(team: Team, lane: LaneId): V2[] {
@@ -102,9 +103,6 @@ export const MONSTER_RADIUS = 1.5;
 export const RIVER_BRAZIERS: V2[] = [
   { x: (149 * MAP) / 300, z: (130 * MAP) / 300 },
   { x: (131 * MAP) / 300, z: (148 * MAP) / 300 },
-  // entlang des inneren Rands der Lane-Ecke (Ufer zum Fluss)
-  { x: (43 * MAP) / 300, z: (27 * MAP) / 300 },
-  { x: (29 * MAP) / 300, z: (38 * MAP) / 300 },
   // an der Westseite der langen Felswand am Baron-Flussarm
   { x: (39 * MAP) / 300, z: (58 * MAP) / 300 },
   { x: (48 * MAP) / 300, z: (72 * MAP) / 300 },
@@ -127,10 +125,6 @@ export const CAMPS: CampSpec[] = [
 
 // Büsche (Gras zum Verstecken), Kreise.
 const BLUE_BRUSH: { p: V2; r: number }[] = [
-  // Büsche am inneren Rand der Lane-Ecke (Top, für Bot gespiegelt)
-  { p: { x: (49 * MAP) / 300, z: (31 * MAP) / 300 }, r: 3 },
-  { p: { x: (36 * MAP) / 300, z: (41 * MAP) / 300 }, r: 2.8 },
-  { p: { x: (31 * MAP) / 300, z: (55 * MAP) / 300 }, r: 2.6 },
   // Baron-Seite (Drache gespiegelt): Busch im Flussarm und Busch zwischen Sichelfelsen und Grube
   { p: { x: (61 * MAP) / 300, z: (61 * MAP) / 300 }, r: 2.4 },
   { p: { x: (75 * MAP) / 300, z: (47 * MAP) / 300 }, r: 3 },

@@ -1,4 +1,4 @@
-"""Wandkarte des Dschungels aus der entzerrten Draufsicht (rect.png, 1024², LoL-Koordinaten 0..14870).
+"""Wandkarte des Dschungels aus der entzerrten Draufsicht (rect.png aus rect.py + kluft.webp, 1024², LoL-Koordinaten 0..14870).
 
 Wände sind die Baum- und Felsinseln: dort ist das Bild stark strukturiert, die Wege sind glatt.
 Die blaue Hälfte (unterhalb des Flusses) wird erkannt, Rot ist die Punktspiegelung davon.
@@ -11,7 +11,7 @@ from PIL import Image
 src, MAP, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 prev = sys.argv[4] if len(sys.argv) > 4 else None
 L_LOL = 14870
-TH = 0.0345
+TH = 0.031
 
 im = np.asarray(Image.open(src).convert("RGB")).astype(float) / 255
 N = im.shape[0]
@@ -200,51 +200,6 @@ west_rock = mirrored(capsule([(38, 55), (44, 62), (49, 69), (52, 77)], 6.5))
 crescent = mirrored(capsule([(61, 45), (64, 38), (72, 33.5), (84, 33)], 6.5))
 full = (full & ~arm) | west_rock | crescent
 water = (water | arm) & ~full
-
-# Wände bis an die Lanes ziehen (wie auf der Kluft kommt man aus dem Dschungel direkt auf die Lane, ohne breiten
-# Grasstreifen): jede offene Zelle bis 14 Einheiten neben dem Lane-Rand wird Wand, wenn dahinter (von der Lane weg)
-# eine Wand kommt, bevor Wasser kommt. Die Lücken zwischen den Wandinseln bleiben als Ausgänge offen.
-# Lanes wie in mapdata.ts (200er-Koordinaten).
-LANES = {
-    "top": ([(24, 176), (16, 160), (14, 146), (14, 33), (15.5, 20), (20, 15.5), (33, 14), (146, 14), (160, 16), (176, 24)], 13),
-    "mid": ([(24, 176), (36, 164), (46, 154), (154, 46), (164, 36), (176, 24)], 12),
-    "bot": ([(24, 176), (40, 184), (54, 186), (167, 186), (180, 184.5), (184.5, 180), (186, 167), (186, 54), (184, 40), (176, 24)], 13),
-}
-BANDW = 14.0
-grow = np.zeros_like(full)
-for pts, lw in LANES.values():
-    P = [(x * MAP / 200, z * MAP / 200) for x, z in pts]
-    best = np.full((MAP, MAP), 1e9)
-    nx_ = np.zeros((MAP, MAP))
-    nz_ = np.zeros((MAP, MAP))
-    for (ax, az), (bx, bz) in zip(P[:-1], P[1:]):
-        dx, dz = bx - ax, bz - az
-        t = np.clip(((xx - ax) * dx + (zz - az) * dz) / (dx * dx + dz * dz), 0, 1)
-        qx, qz = ax + dx * t, az + dz * t
-        d = np.hypot(xx - qx, zz - qz)
-        m = d < best
-        best = np.where(m, d, best)
-        nx_ = np.where(m, qx, nx_)
-        nz_ = np.where(m, qz, nz_)
-    half = lw / 2
-    cand = ~full & ~water & (best > half + 1.5) & (best < half + BANDW)
-    ux = (xx - nx_) / np.maximum(best, 1e-6)
-    uz = (zz - nz_) / np.maximum(best, 1e-6)
-    hit = np.zeros_like(full)
-    blocked = np.zeros_like(full)
-    for step in np.arange(1.0, BANDW + 1, 1.0):
-        sx = np.clip((xx + ux * step).astype(int), 0, MAP - 1)
-        sz = np.clip((zz + uz * step).astype(int), 0, MAP - 1)
-        inside = best + step < half + BANDW + 2
-        blocked |= water[sz, sx] & inside
-        hit |= full[sz, sx] & inside & ~blocked
-    grow |= cand & hit
-# nicht in den Basen und nicht über den Camps
-for (X, Y), r in CAMPS.values():
-    for cx, cz in (lol(X, Y), (MAP - lol(X, Y)[0], MAP - lol(X, Y)[1])):
-        grow &= np.hypot(xx - cx, zz - cz) > r + 2
-full |= grow
-print("Wände bis an die Lanes gezogen:", int(grow.sum()), "Zellen")
 
 rows = rle(full)
 pool = rle(water)
