@@ -214,21 +214,20 @@ export const CHAMPIONS: ChampDef[] = [
         ai: "poke",
         cast: (w, c, aim, rank) => {
           const p = clampAim(c, aim, 12);
-          const d = dirFrom(c, p);
           const dmg = r4([70, 110, 150, 190], rank) + c.stats.ad * 0.8 + c.stats.ap * 0.4;
-          const speed = 20;
+          // Flug und Scheibe sind Bild für Bild aus dem Vorlage-GIF (flipfx.ts); dort landet die Kugel nach 0,93 s
+          const delay = 0.93;
           c.anim.atk = 1;
-          // die Kugel fliegt sichtbar zur Stelle (ohne selbst zu treffen), beim Aufschlag die Lache
-          w.skillshot(c, { dx: d.dx, dz: d.dz, speed, range: Math.max(0.5, d.len - 0.6), width: 0.01, visual: "orb", color: 0xff2a2a, champsOnly: true, onHit: () => false });
+          w.fx({ type: "qcast", x: p.x, z: p.z, r: 3.5, owner: c, dur: delay });
           w.area(c, {
             x: p.x,
             z: p.z,
             radius: 3.5,
-            delay: Math.max(0.1, d.len / speed),
+            delay,
             visual: "blood",
             color: 0xff2030,
             onTrigger: (a) => {
-              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff2030, owner: c, dur: 1.2 });
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c });
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.slow(u, 0.3, 1.5);
@@ -289,7 +288,7 @@ export const CHAMPIONS: ChampDef[] = [
             visual: "bloodbig",
             color: 0xff2030,
             onTrigger: (a) => {
-              w.fx({ type: "pool", x: a.x, z: a.z, r: a.radius, color: 0xff1a20, owner: c, dur: 2.2 });
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: 2.2 });
               for (const u of w.enemiesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.damage(c, u, dmg, "magic", { ability: true });
                 w.slow(u, 0.5, 2);

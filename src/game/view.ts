@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { applyCameraCut } from "./camcut";
-import { BloodFx } from "./bloodfx";
+import { FlipFx } from "./flipfx";
 import { FOG_RES, FogOfWar } from "./fog";
 import { GroundFx, Indicators, Particles } from "./fx";
 import { FOUNTAIN, MAP, type V2 } from "./mapdata";
@@ -63,7 +63,7 @@ export class View {
   private structs = new Map<number, StructView>();
   private minionMesh: Record<string, THREE.InstancedMesh> = {};
   private projs = new Map<number, THREE.Object3D>();
-  private blood = new BloodFx();
+  private flip = new FlipFx();
   private areas = new Map<number, { ring: THREE.Mesh; disc: THREE.Mesh; meteor: THREE.Object3D | null }>();
   private auras: { owner: Unit; until: number; color: THREE.Color }[] = [];
   private time = 0;
@@ -99,7 +99,7 @@ export class View {
     scene.add(this.particles.points);
     this.ground = new GroundFx();
     scene.add(this.ground.group);
-    scene.add(this.blood.group);
+    scene.add(this.flip.group);
     this.indicators = new Indicators();
     scene.add(this.indicators.group);
 
@@ -348,7 +348,7 @@ export class View {
     this.syncStructures(dt);
     this.syncProjectiles(dt);
     this.syncAreas();
-    this.blood.update(dt);
+    this.flip.update(dt);
 
     // Auren
     for (const a of this.auras) {
@@ -674,9 +674,6 @@ export class View {
         o = m;
         break;
       }
-      case "orb":
-        o = this.blood.makeOrb(p.color);
-        break;
       default: {
         const grp = new THREE.Group();
         const m = new THREE.Mesh(G.sphere, basic(p.color));
@@ -706,8 +703,7 @@ export class View {
       const owner = p.owner;
       const visible = p.team === this.playerTeam || p.team === 2 || owner.vis[this.playerTeam] || this.fogVisibleAt(p.x, p.z);
       o.visible = visible;
-      // Blutkugel sinkt im Flug zum Boden hin ab
-      const y = g.groundAt(p.x, p.z) + (p.visual === "orb" ? p.y - 0.75 * Math.min(1, p.traveled / Math.max(0.1, p.range)) : p.y);
+      const y = g.groundAt(p.x, p.z) + p.y;
       if (p.visual === "turret" || p.visual === "arrow") {
         // in Flugrichtung ausrichten, auch nach oben und unten (Pfeile im Bogen)
         const prev = o.userData.prev as THREE.Vector3 | undefined;
@@ -718,7 +714,6 @@ export class View {
         o.position.set(p.x, y, p.z);
         o.rotation.y = Math.atan2(p.dx, p.dz);
       }
-      if (p.visual === "orb") this.blood.tickOrb(p.id, p.x, y, p.z, p.color, visible);
       if (visible) {
         if (p.visual === "fireball" && Math.random() < 0.9) this.particles.emit(p.x, y, p.z, (Math.random() - 0.5) * 1.5, 0.8, (Math.random() - 0.5) * 1.5, new THREE.Color(0xff7a20), 0.7, 0.35, 0);
         if (p.visual === "turret") {
@@ -752,10 +747,6 @@ export class View {
       if (chain) {
         this.scene.remove(chain);
         this.hookChains.delete(id);
-      }
-      if (o.userData.visual === "orb") {
-        this.blood.endOrb(id);
-        continue;
       }
       // Einschlag
       if (o.visible) {
@@ -868,10 +859,12 @@ export class View {
           P.burst(f.x, y + 1.2, f.z, col, 24, 6, 0.7, 0.5);
           this.ground.ring(f.x, y, f.z, 0.3, f.r ?? 2, col, 0.3, 0.7);
           break;
-        case "pool":
-          // Blutlache (Malgor): dunkle Scheibe mit rotem Rand, Sterne und Schmetterlinge (bloodfx.ts)
-          this.blood.pool(f.x, y, f.z, f.r ?? 3, f.dur ?? 1.2);
-          P.burst(f.x, y + 0.5, f.z, 0xfff0f4, 8, 3, 0.3, 0.3, 0);
+        case "qcast":
+          // Malgors Blutkugel: Flug Bild für Bild aus dem Vorlage-GIF
+          if (f.owner) this.flip.qFlight(new THREE.Vector3(f.owner.x, g.groundAt(f.owner.x, f.owner.z), f.owner.z), new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur ?? 0.93);
+          break;
+        case "qdisc":
+          this.flip.qDisc(new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur);
           break;
         case "aura":
           if (f.owner) this.auras.push({ owner: f.owner, until: w.t + (f.dur ?? 3), color: new THREE.Color(col) });

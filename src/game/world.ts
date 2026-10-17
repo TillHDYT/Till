@@ -47,7 +47,8 @@ export type FxKind =
   | "respawn"
   | "shield"
   | "gold"
-  | "pool";
+  | "qcast"
+  | "qdisc";
 
 export type Fx = { type: FxKind; x: number; z: number; r?: number; color?: number; owner?: Unit; dur?: number; big?: boolean };
 
@@ -64,7 +65,7 @@ export type GameEvent =
   | { type: "end"; winner: 0 | 1 }
   | { type: "sound"; name: string; x: number; z: number };
 
-export type ProjVisual = "arrow" | "bolt" | "fireball" | "orb" | "dagger" | "hook" | "bigarrow" | "turret" | "caster" | "siege" | "monster" | "dragon" | "baron";
+export type ProjVisual = "arrow" | "bolt" | "fireball" | "dagger" | "hook" | "bigarrow" | "turret" | "caster" | "siege" | "monster" | "dragon" | "baron";
 
 export type Projectile = {
   id: number;
