@@ -574,7 +574,7 @@ export const CHAMPIONS: ChampDef[] = [
           // Flug und Kreis wie bei Malgors Q Bild für Bild aus dem Vorlage-GIF (flipfx.ts)
           const delay = 0.93;
           c.anim.cast = 0.4;
-          w.fx({ type: "qcast", x: p.x, z: p.z, r: 4.8, owner: c, dur: delay });
+          w.fx({ type: "qcast", x: p.x, z: p.z, r: 4.8, owner: c, dur: delay, color: 0x7dff8a });
           w.area(c, {
             x: p.x,
             z: p.z,
@@ -583,7 +583,7 @@ export const CHAMPIONS: ChampDef[] = [
             visual: "blood",
             color: 0x7dff8a,
             onTrigger: (a) => {
-              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: POOL_HOLD });
+              w.fx({ type: "qdisc", x: a.x, z: a.z, r: a.radius, owner: c, dur: POOL_HOLD, color: 0x7dff8a });
               for (const u of w.alliesInRadius(c.team, a.x, a.z, a.radius)) {
                 w.heal(u, heal);
                 w.fx({ type: "heal", x: u.x, z: u.z, owner: u });

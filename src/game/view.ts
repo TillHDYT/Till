@@ -34,6 +34,9 @@ import { buildTerrain, colored, mat4, type Quality, type Terrain } from "./terra
 import { Champion, Minion, Monster, Structure, type MinionType, type Unit } from "./units";
 import type { Area, Projectile, World } from "./world";
 
+/** Farbe, mit der Elaras Q ihre Blutkugel und den Kreis grün anfordert */
+const GREEN_POOL = 0x7dff8a;
+
 const MINION_TYPES: MinionType[] = ["melee", "caster", "siege", "super"];
 const MINION_CAP: Record<MinionType, number> = { melee: 90, caster: 90, siege: 24, super: 30 };
 
@@ -994,10 +997,10 @@ export class View {
           break;
         case "qcast":
           // Malgors Blutkugel: Flug Bild für Bild aus dem Vorlage-GIF
-          if (f.owner) this.flip.qFlight(new THREE.Vector3(f.owner.x, g.groundAt(f.owner.x, f.owner.z), f.owner.z), new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur ?? 0.93);
+          if (f.owner) this.flip.qFlight(new THREE.Vector3(f.owner.x, g.groundAt(f.owner.x, f.owner.z), f.owner.z), new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur ?? 0.93, f.color === GREEN_POOL);
           break;
         case "qdisc":
-          this.flip.qDisc(new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur);
+          this.flip.qDisc(new THREE.Vector3(f.x, y, f.z), f.r ?? 3.5, f.dur, f.color === GREEN_POOL);
           break;
         case "aura":
           if (f.owner) this.auras.push({ owner: f.owner, until: w.t + (f.dur ?? 3), color: new THREE.Color(col) });

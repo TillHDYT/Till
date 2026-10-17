@@ -48,7 +48,8 @@ function load(url: string) {
   return t;
 }
 
-function flipMaterial(url: string, cols: number, rows: number, mode: "mul" | "add") {
+/** green: Rot und Grün tauschen (Elaras Heilkreis ist die grüne Fassung von Malgors Blutlache). */
+function flipMaterial(url: string, cols: number, rows: number, mode: "mul" | "add", green = false) {
   const mat = new THREE.ShaderMaterial({
     uniforms: { uMap: { value: load(url) }, uFrame: { value: 0 }, uFade: { value: 1 }, uGrid: { value: new THREE.Vector2(cols, rows) } },
     transparent: true,
@@ -70,7 +71,7 @@ function flipMaterial(url: string, cols: number, rows: number, mode: "mul" | "ad
         float col = mod(uFrame, uGrid.x);
         float row = floor(uFrame / uGrid.x);
         vec2 cell = vec2((vUv.x + col) / uGrid.x, (vUv.y + uGrid.y - 1.0 - row) / uGrid.y);
-        vec3 c = texture2D(uMap, cell).rgb;
+        vec3 c = texture2D(uMap, cell).${green ? "grb" : "rgb"};
         ${mode === "mul" ? "gl_FragColor = vec4(mix(vec3(1.0), pow(c, vec3(1.3)), uFade), 1.0);" : "gl_FragColor = vec4(c * uFade * 1.5, 1.0);"}
       }`,
   });
@@ -189,7 +190,7 @@ export class FlipFx {
    * Flug der Blutkugel vom Werfer (from) zur Zielstelle (to), Dauer dur Sekunden; radius = Radius der Scheibe in
    * Welt-Einheiten (legt den Maßstab fest). Die Spur wird in Flugrichtung gestreckt, damit sie beim Werfer beginnt.
    */
-  qFlight(from: THREE.Vector3, to: THREE.Vector3, radius: number, dur: number) {
+  qFlight(from: THREE.Vector3, to: THREE.Vector3, radius: number, dur: number, green = false) {
     const s = radius / DISC_R_PX;
     const U = new THREE.Vector3(to.x - from.x, 0, to.z - from.z);
     const dist = U.length();
@@ -202,8 +203,8 @@ export class FlipFx {
     const n = FLIGHT.frames;
     this.add(
       geo,
-      flipMaterial(qFlightMulUrl, FLIGHT.cols, FLIGHT.rows, "mul"),
-      flipMaterial(qFlightAddUrl, FLIGHT.cols, FLIGHT.rows, "add"),
+      flipMaterial(qFlightMulUrl, FLIGHT.cols, FLIGHT.rows, "mul", green),
+      flipMaterial(qFlightAddUrl, FLIGHT.cols, FLIGHT.rows, "add", green),
       8,
       false,
       dur,
@@ -216,7 +217,7 @@ export class FlipFx {
    * Scheibe am Aufschlag (Radius in Welt-Einheiten): spielt das GIF bis zum Ende und bleibt dann noch hold Sekunden
    * liegen; dabei laufen die letzten Bilder (Schmetterlinge am Boden) vor und zurück, am Schluss verblasst sie.
    */
-  qDisc(at: THREE.Vector3, radius: number, hold = 0) {
+  qDisc(at: THREE.Vector3, radius: number, hold = 0, green = false) {
     const s = radius / DISC_R_PX;
     const h = DISC.half * s;
     const T = new THREE.Vector3(at.x, at.y + 0.12, at.z);
@@ -231,8 +232,8 @@ export class FlipFx {
     };
     this.add(
       geo,
-      flipMaterial(qDiscMulUrl, DISC.cols, DISC.rows, "mul"),
-      flipMaterial(qDiscAddUrl, DISC.cols, DISC.rows, "add"),
+      flipMaterial(qDiscMulUrl, DISC.cols, DISC.rows, "mul", green),
+      flipMaterial(qDiscAddUrl, DISC.cols, DISC.rows, "add", green),
       4,
       true,
       dur,
