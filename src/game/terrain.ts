@@ -293,7 +293,7 @@ function groundMask(grid: NavGrid, res: number) {
       // B: Weg (Lane), A: Steinboden der Basis
       const laneW = sstep(0.2, 0.6, lane + jit * 0.8) * (1 - sstep(0.1, 0.5, base)) * (1 - sstep(0.15, 0.5, river));
       data[o + 2] = Math.round(Math.max(laneW * (1 - wall), pitFloor) * 255);
-      data[o + 3] = Math.round(sstep(0.25, 0.6, base) * 255);
+      data[o + 3] = Math.round(sstep(0.15, 0.75, base + jit * 0.9) * 255);
     }
   }
   const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -721,13 +721,35 @@ export function buildTerrain(grid: NavGrid, quality: Quality, fog: FogOfWar): Te
             vec3 pathCol = textureGrad(uPath, pp, ddx, ddy).rgb * vec3(1.3, 1.3, 1.35) * mix(0.85, 1.0, gMask.g);
             diffuseColor.rgb = mix(diffuseColor.rgb, pathCol, gMask.b);
           }
-          // Basis: Boden wie auf der Kluft (assets-src/base-floor), Rot gespiegelt; feine Steinstruktur darüber
+          // Basis: Boden wie auf der Kluft (assets-src/base-floor), Rot gespiegelt. Damit er nicht wie ein eingefügtes
+          // Bild wirkt: nachgeschärft, feine Steinstruktur, Relief aus der Helligkeit (Licht von der Sonne) und Gras
+          // im Bild an das Gras des Geländes angeglichen
           if (gMask.a > 0.004) {
             bool redSide = vFogW.x > vFogW.z;
             vec2 bp = redSide ? vec2(${MAP.toFixed(1)}) - vFogW.xz : vFogW.xz;
-            vec3 bc = texture2D(uBaseFloor, (bp - vec2(0.0, ${(MAP - BASE_FLOOR_SIZE).toFixed(1)})) / ${BASE_FLOOR_SIZE.toFixed(1)}).rgb;
-            float det = dot(texture2D(uStone, vFogW.xz / 6.5).rgb, vec3(0.333));
-            bc *= mix(1.0, det * 2.2, 0.22) * (redSide ? vec3(1.42, 1.28, 1.22) : vec3(1.3, 1.32, 1.38));
+            vec2 buv = (bp - vec2(0.0, ${(MAP - BASE_FLOOR_SIZE).toFixed(1)})) / ${BASE_FLOOR_SIZE.toFixed(1)};
+            vec3 bc = texture2D(uBaseFloor, buv).rgb;
+            // Unschärfe der Vorlage ausgleichen (unscharfe Maske über eine gröbere Mip-Stufe)
+            vec3 bl = texture2D(uBaseFloor, buv, 2.5).rgb;
+            bc = max(bc + (bc - bl) * 0.85, 0.0);
+            // Relief: Fugen und Kanten der Platten fangen Licht von oben links
+            float e = 1.0 / 1536.0;
+            float lc = dot(bl, vec3(0.333));
+            float lx = dot(texture2D(uBaseFloor, buv + vec2(e * 2.0, 0.0), 1.0).rgb, vec3(0.333));
+            float lz = dot(texture2D(uBaseFloor, buv + vec2(0.0, e * 2.0), 1.0).rgb, vec3(0.333));
+            float relief = clamp(((lc - lx) * (redSide ? -1.0 : 1.0) + (lc - lz) * (redSide ? -1.0 : 1.0)) * 5.0, -0.25, 0.25);
+            // feine Steinkörnung (nur die Abweichung vom Mittel, damit sich die Farbe nicht verschiebt)
+            float d1 = dot(texture2D(uStone, vFogW.xz / 3.1).rgb, vec3(0.333));
+            float d2 = dot(texture2D(uStone, vFogW.xz / 3.1, 4.0).rgb, vec3(0.333));
+            float grain = (d1 - d2) * 1.4;
+            // Gras im Bild: Farbe und Struktur vom Gelände, Helligkeit vom Bild
+            float green = smoothstep(0.015, 0.09, bc.g - max(bc.r, bc.b) * 0.92);
+            float bLum = dot(bc, vec3(0.3, 0.59, 0.11));
+            float gLum = max(dot(grassCol, vec3(0.3, 0.59, 0.11)), 0.02);
+            vec3 grassMatch = grassCol * clamp(bLum / gLum * 1.25, 0.55, 1.6);
+            vec3 tint = redSide ? vec3(1.42, 1.28, 1.22) : vec3(1.3, 1.32, 1.38);
+            vec3 stone = bc * tint * (1.0 + relief + grain * (1.0 - green));
+            bc = mix(stone, grassMatch, green * 0.65);
             diffuseColor.rgb = mix(diffuseColor.rgb, bc, gMask.a);
           }
           diffuseColor.rgb = mix(diffuseColor.rgb, grassCol, gMask.r);
